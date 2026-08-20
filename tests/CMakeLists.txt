@@ -6,7 +6,9 @@
 # ../firmware/components/actuators/include/pwm_esc_convert.h), so it builds and runs unmodified
 # on the host. This is how Milestones 3-5 get real automated test coverage without any hardware
 # or QEMU: firmware I/O itself can't be unit tested without silicon, but the register/PWM-scaling
-# math it depends on can be, and is, here.
+# math it depends on can be, and is, here. Milestone 6 (firmware/main/) is mostly FreeRTOS task/
+# queue/notification/timer/mutex scaffolding that isn't meaningfully testable off-target this way
+# - task_util.c's decimation check is the one piece pure enough to be worth pulling in the same way.
 
 cmake_minimum_required(VERSION 3.16)
 project(bicopter_fc_tests C)
@@ -15,6 +17,7 @@ enable_testing()
 
 set(SENSORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/sensors)
 set(ACTUATORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/actuators)
+set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/main)
 
 add_executable(mpu6050_convert_test
     mpu6050_convert_test.c
@@ -62,3 +65,11 @@ target_include_directories(pwm_util_test PRIVATE ${ACTUATORS_DIR}/include)
 target_link_libraries(pwm_util_test m)
 
 add_test(NAME pwm_util_test COMMAND pwm_util_test)
+
+add_executable(task_util_test
+    task_util_test.c
+    ${MAIN_DIR}/task_util.c
+)
+target_include_directories(task_util_test PRIVATE ${MAIN_DIR})
+
+add_test(NAME task_util_test COMMAND task_util_test)

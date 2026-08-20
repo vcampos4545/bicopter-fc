@@ -1,0 +1,51 @@
+menu "Bicopter sensor hardware"
+
+    config BICOPTER_SENSORS_ENABLED
+        bool "Physical IMU/barometer sensors are wired to this board"
+        default n
+        help
+            No ESP32 board/pinout has been finalized for this project yet (see docs/hardware.md).
+            Leave disabled until a board is chosen and the I2C pins below are set to match it -
+            SensorTask (firmware/main/sensor_task.c) gracefully skips real sensor I2C init/reads
+            while this is disabled, logging a stub reading instead of attempting a bus that
+            doesn't exist. Flip this on and fill in the pins below once a board with an MPU6050
+            and BMP581 wired up exists.
+
+    config BICOPTER_I2C_PORT
+        int "I2C port number"
+        depends on BICOPTER_SENSORS_ENABLED
+        default 0
+
+    config BICOPTER_I2C_SDA_GPIO
+        int "I2C SDA GPIO"
+        depends on BICOPTER_SENSORS_ENABLED
+        default 21
+        help
+            Placeholder default (ESP32's commonly-used default I2C SDA pin) - not verified against
+            any actual board wiring. Set to match the real board once one is chosen.
+
+    config BICOPTER_I2C_SCL_GPIO
+        int "I2C SCL GPIO"
+        depends on BICOPTER_SENSORS_ENABLED
+        default 22
+        help
+            Placeholder default (ESP32's commonly-used default I2C SCL pin) - not verified against
+            any actual board wiring. Set to match the real board once one is chosen.
+
+    config BICOPTER_I2C_CLOCK_HZ
+        int "I2C clock speed (Hz)"
+        depends on BICOPTER_SENSORS_ENABLED
+        default 400000
+        help
+            400kHz ("fast mode") - both the MPU6050 and BMP581 support it per their datasheets.
+
+    config BICOPTER_MPU6050_INT_GPIO
+        int "MPU6050 data-ready interrupt GPIO (-1 disables, falls back to polling)"
+        depends on BICOPTER_SENSORS_ENABLED
+        default -1
+        help
+            See firmware/components/sensors/include/mpu6050.h - GPIO_NUM_NC (-1) makes
+            mpu6050_read() poll the INT_STATUS data-ready bit each call instead of blocking on an
+            interrupt-fed queue. Set to a real GPIO once the MPU6050's INT pin is wired to one.
+
+endmenu

@@ -76,23 +76,26 @@ output drivers (`tests/pwm_esc_convert_test.c`, `tests/servo_convert_test.c`,
 
 ## What's real vs. stub right now
 
-As of Milestone 5: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
-`main/` that boots FreeRTOS and logs, real MPU6050 IMU and BMP581 barometer drivers in
-`firmware/components/sensors/` (I2C init/config, interrupt-or-polled IMU reads / polled barometer
-reads, raw-to-SI conversion with calibration and filtering, stale-data detection), and real
-PWM ESC/servo output drivers in `firmware/components/actuators/` (LEDC-generated conventional RC
-PWM behind the `motor_output_t`/`ServoOutput` interfaces, with an explicit `actuators_init_safe()`
-safe-init entry point). None of these are yet wired into `main/` (that's milestone 6's task
-architecture) and none is yet verified against real hardware (no physical MPU6050, BMP581, ESC,
-servo, or motor was available; see [docs/hardware.md](docs/hardware.md#mpu6050-milestone-3),
-[docs/hardware.md](docs/hardware.md#bmp581-milestone-4), and
-[docs/hardware.md](docs/hardware.md#pwm-esc--tilt-servo-milestone-5)). No radio/estimation/control
-code exists yet. `flight_core/CMakeLists.txt` and `simulator/CMakeLists.txt` are still
-non-functional placeholders (commented-out build wiring) — do not expect either to configure or
-build yet. `docs/control.md` and `docs/estimation.md` are intentionally stubs: the force/torque
-model, control-allocation math, and attitude-estimation algorithm must be *derived* from real
-vehicle geometry/sensor data in their respective milestones, not invented ahead of time. See
-[TODO.md](TODO.md) for the full milestone sequence and current status.
+As of Milestone 6: `firmware/` is a real, buildable ESP-IDF project (see below) whose `main/` now
+runs six FreeRTOS tasks (SensorTask, EstimatorTask, FlightControlTask, RadioTask, TelemetryTask,
+SafetyTask) at documented priorities/periods (`firmware/main/task_config.h`,
+[docs/architecture.md](docs/architecture.md#freertos-tasks)), with a queue, a task notification,
+an `esp_timer`, a mutex, and the task watchdog wired between them. Task *bodies* are still stub/
+no-op logic — no estimation, control-loop math, or actuator-driving logic exists in any task yet;
+that is milestones 7-12's job. `SensorTask` is the one exception that reaches real driver code: it
+calls the real MPU6050/BMP581 driver interfaces from `firmware/components/sensors/` behind a new
+`CONFIG_BICOPTER_SENSORS_ENABLED` Kconfig option (default off, since no board is chosen yet) and
+runs gracefully without hardware when it's off. `actuators_init_safe()`
+(`firmware/components/actuators/`) is still not called from `main/` — it needs a per-board PWM
+pin config that doesn't exist yet (see [docs/hardware.md](docs/hardware.md)'s open ESC/servo pin
+items); the natural call site is documented in `firmware/main/main.c` for whichever milestone
+finalizes the board config. No radio code exists yet. `flight_core/CMakeLists.txt` and
+`simulator/CMakeLists.txt` are still non-functional placeholders (commented-out build wiring) —
+do not expect either to configure or build yet. `docs/control.md` and `docs/estimation.md` are
+intentionally stubs: the force/torque model, control-allocation math, and attitude-estimation
+algorithm must be *derived* from real vehicle geometry/sensor data in their respective milestones,
+not invented ahead of time. See [TODO.md](TODO.md) for the full milestone sequence and current
+status.
 
 ## Firmware toolchain
 

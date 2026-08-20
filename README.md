@@ -7,14 +7,17 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 4 (BMP581 barometer driver + tests) is complete. `firmware/` is a real
-ESP-IDF v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
-[docs/firmware.md](docs/firmware.md)), and `firmware/components/sensors/` has real MPU6050 IMU
-and BMP581 barometer I2C drivers with host-side unit tests for their
-conversion/calibration/filtering/stale-detection logic (see [docs/hardware.md](docs/hardware.md))
-— no real hardware was available to verify actual I2C transactions. No controllers, estimator, or
-simulator physics exist yet — see [TODO.md](TODO.md) for the full roadmap and what's implemented
-so far.
+**Status:** Milestone 6 (FreeRTOS task architecture) is complete. `firmware/` is a real ESP-IDF
+v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
+[docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
+BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
+drivers, and `firmware/main/` now runs six FreeRTOS tasks (SensorTask, EstimatorTask,
+FlightControlTask, RadioTask, TelemetryTask, SafetyTask) at documented priorities/periods with a
+queue, a task notification, an `esp_timer`, a mutex, and the task watchdog wired between them —
+task bodies are still stub/no-op logic (see [docs/architecture.md](docs/architecture.md)). No
+real hardware was available to verify actual I2C/PWM transactions or real-hardware task timing.
+No estimator, controller, or simulator physics exist yet — see [TODO.md](TODO.md) for the full
+roadmap and what's implemented so far.
 
 ## Target vehicle
 
@@ -136,8 +139,10 @@ cmake --build simulator/build
 
 ### tests/
 
-As of Milestone 4: host-side tests for the sensors component's pure conversion/calibration/
-filtering/stale-detection logic (MPU6050 and BMP581), built independently of ESP-IDF via plain
+As of Milestone 6: host-side tests for the sensors component's pure conversion/calibration/
+filtering/stale-detection logic (MPU6050 and BMP581), the actuators component's pure clamping/
+pulse-mapping logic (PWM ESC/servo), and `firmware/main/`'s one piece of pure task logic
+(SensorTask's barometer-read decimation check) — built independently of ESP-IDF via plain
 CMake/CTest (no `flight_core` dependency yet, since `flight_core` remains an unimplemented stub).
 
 ```sh

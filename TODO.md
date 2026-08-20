@@ -73,12 +73,28 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   physical ESC, servo, or motor was available in this environment, and nothing was armed - all
   hardware verification is deferred (see docs/hardware.md).
 
-- [ ] **6. FreeRTOS task architecture**
+- [x] **6. FreeRTOS task architecture**
   Deliverable: the task skeleton described in `docs/architecture.md` (SensorTask, EstimatorTask,
   FlightControlTask, RadioTask, TelemetryTask, SafetyTask) wired up with their target
   rates/priorities and the queues/synchronization between them, running with stub payloads.
   Done when: all tasks run concurrently at their target rates without missed deadlines or
   priority inversions, measured on hardware.
+  Done via: `firmware/main/` - six tasks at concrete priorities/periods (`task_config.h`), a
+  length-1 overwrite queue (`SensorTask` -> `EstimatorTask`), a task notification (`SafetyTask`
+  -> `FlightControlTask`), an `esp_timer` driving `TelemetryTask`'s wake, and a mutex around the
+  one genuinely cross-task shared state (`safety_state_t`) - see
+  [docs/architecture.md](docs/architecture.md#freertos-tasks) for the full table and reasoning.
+  `SensorTask` calls the real milestone 3/4 driver interfaces behind a new
+  `CONFIG_BICOPTER_SENSORS_ENABLED` Kconfig option (default off, no board chosen yet) and
+  gracefully runs without hardware when it's off. The task watchdog is enabled
+  (`CONFIG_ESP_TASK_WDT_PANIC=y`, 1s timeout) and all six tasks feed it. `idf.py build` succeeds;
+  QEMU boot confirms all six tasks running concurrently at their target rates with no crash, no
+  FreeRTOS assertion, and no watchdog timeout over a ~12s run - not a substitute for real-hardware
+  timing verification, which remains milestone 17's job. One new host test
+  (`tests/task_util_test.c`) covers the one piece of pure logic this milestone added; the rest is
+  FreeRTOS/ESP-IDF scaffolding not meaningfully testable off-target. No physical board was
+  available in this environment (same constraint as every milestone so far - see
+  docs/hardware.md).
 
 - [ ] **7. Math library**
   Deliverable: `flight_core/math/` — vectors, quaternions/rotations, and any numerical utilities

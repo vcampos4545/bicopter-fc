@@ -6,3 +6,27 @@
 # (see ../docs/hardware.md). Anyone can `idf.py set-target esp32` in a fresh checkout and get
 # this back; `idf.py build` also regenerates `sdkconfig` from this file if it's missing.
 CONFIG_IDF_TARGET="esp32"
+
+# Milestone 6 (FreeRTOS task architecture, see docs/architecture.md):
+#
+# The default 100Hz/10ms FreeRTOS tick is too coarse for this project's task periods (SensorTask
+# targets 500Hz = 2ms) - pdMS_TO_TICKS(2) would round down to 0 ticks at the stock rate, which is
+# a busy-loop, not a real periodic delay. 1000Hz/1ms gives every task period in task_config.h
+# (firmware/main/task_config.h) a clean, nonzero tick count.
+CONFIG_FREERTOS_HZ=1000
+
+# Task watchdog: CONFIG_ESP_TASK_WDT_EN/_INIT already default to "y" (enabled and auto-initialized
+# at startup) even without this file touching them - see firmware/main/main.c and each task_*.c's
+# esp_task_wdt_add(NULL)/esp_task_wdt_reset() calls. Two defaults are overridden here:
+#
+# - CONFIG_ESP_TASK_WDT_PANIC: stock default is "n" (log-and-continue on a watchdog timeout).
+#   Flight-control firmware should not silently continue running after a task hang; "y" makes a
+#   timeout trigger the panic handler (which prints the triggered-task diagnostic, then reboots).
+#   This is the closest available safe action until milestone 16 gives SafetyTask a real
+#   motor-shutdown/disarm path to invoke instead - see docs/architecture.md's watchdog section for
+#   why a software disarm from the WDT's own context isn't the obvious right answer either.
+# - CONFIG_ESP_TASK_WDT_TIMEOUT_S: stock default is 5s. This project's slowest task period is
+#   TelemetryTask's 50ms (task_config.h) - 1s is roughly 20x that, generous margin above normal
+#   jitter while still detecting a real hang an order of magnitude faster than the 5s default.
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=1
