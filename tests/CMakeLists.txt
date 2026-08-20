@@ -1,11 +1,12 @@
 # Standalone host-side tests, independent of ESP-IDF and (for now) of flight_core, which is
-# still an unimplemented stub (see ../flight_core/CMakeLists.txt). Compiles the sensors
-# component's pure conversion/calibration/stale-detection logic directly from
-# ../firmware/components/sensors/ — that logic has zero ESP-IDF dependencies by design (see
-# ../firmware/components/sensors/include/mpu6050_convert.h), so it builds and runs unmodified on
-# the host. This is how Milestone 3 gets real automated test coverage without any hardware or
-# QEMU: firmware I/O itself can't be unit tested without silicon, but the register-scaling math
-# it depends on can be, and is, here.
+# still an unimplemented stub (see ../flight_core/CMakeLists.txt). Compiles the sensors and
+# actuators components' pure conversion/calibration/clamping logic directly from
+# ../firmware/components/{sensors,actuators}/ — that logic has zero ESP-IDF dependencies by
+# design (see ../firmware/components/sensors/include/mpu6050_convert.h and
+# ../firmware/components/actuators/include/pwm_esc_convert.h), so it builds and runs unmodified
+# on the host. This is how Milestones 3-5 get real automated test coverage without any hardware
+# or QEMU: firmware I/O itself can't be unit tested without silicon, but the register/PWM-scaling
+# math it depends on can be, and is, here.
 
 cmake_minimum_required(VERSION 3.16)
 project(bicopter_fc_tests C)
@@ -13,6 +14,7 @@ project(bicopter_fc_tests C)
 enable_testing()
 
 set(SENSORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/sensors)
+set(ACTUATORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/actuators)
 
 add_executable(mpu6050_convert_test
     mpu6050_convert_test.c
@@ -31,3 +33,32 @@ target_include_directories(bmp581_convert_test PRIVATE ${SENSORS_DIR}/include)
 target_link_libraries(bmp581_convert_test m)
 
 add_test(NAME bmp581_convert_test COMMAND bmp581_convert_test)
+
+add_executable(pwm_esc_convert_test
+    pwm_esc_convert_test.c
+    ${ACTUATORS_DIR}/src/pwm_esc_convert.c
+    ${ACTUATORS_DIR}/src/pwm_util.c
+)
+target_include_directories(pwm_esc_convert_test PRIVATE ${ACTUATORS_DIR}/include)
+target_link_libraries(pwm_esc_convert_test m)
+
+add_test(NAME pwm_esc_convert_test COMMAND pwm_esc_convert_test)
+
+add_executable(servo_convert_test
+    servo_convert_test.c
+    ${ACTUATORS_DIR}/src/servo_convert.c
+    ${ACTUATORS_DIR}/src/pwm_util.c
+)
+target_include_directories(servo_convert_test PRIVATE ${ACTUATORS_DIR}/include)
+target_link_libraries(servo_convert_test m)
+
+add_test(NAME servo_convert_test COMMAND servo_convert_test)
+
+add_executable(pwm_util_test
+    pwm_util_test.c
+    ${ACTUATORS_DIR}/src/pwm_util.c
+)
+target_include_directories(pwm_util_test PRIVATE ${ACTUATORS_DIR}/include)
+target_link_libraries(pwm_util_test m)
+
+add_test(NAME pwm_util_test COMMAND pwm_util_test)
