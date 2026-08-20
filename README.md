@@ -91,9 +91,8 @@ Used consistently across all code and documentation in this repository:
 
 ## Build instructions
 
-Nothing in this repository is buildable yet — Milestone 1 is structure and documentation only.
-This section documents the intended build story per component; it will be filled in as each
-piece lands.
+`firmware/` is buildable as of Milestone 2; the other components are not yet. This section
+documents the intended build story per component; it will be filled in as each piece lands.
 
 ### firmware/ (ESP-IDF)
 
