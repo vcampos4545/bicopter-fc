@@ -1,0 +1,39 @@
+# --- ESP-IDF / firmware/ ---
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+firmware/**/build/
+
+# --- CMake (flight_core/, simulator/, tests/) ---
+build/
+**/build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+Testing/
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# --- ESP-IDF tooling ---
+.devcontainer/
+.espressif/
+
+# --- Misc build artifacts ---
+*.o
+*.obj
+*.elf
+*.bin
+*.map
+*.a
+*.so
+*.dylib
+*.exe
