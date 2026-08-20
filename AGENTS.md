@@ -39,7 +39,8 @@ Full rationale: [docs/architecture.md](docs/architecture.md).
 
 `flight_core` never calls ESP-IDF APIs or touches a specific sensor/actuator part. It only sees
 small poll-style interfaces — `Imu`, `Barometer`, `MotorOutput`, `ServoOutput`, `Radio`, and a
-battery monitor (exact shape TBD when the ESC/servo HAL milestone lands). `firmware/`
+battery monitor (exact shape still TBD; Milestone 5 landed `MotorOutput`/`ServoOutput` but did not
+address battery sensing — that remains open for whichever milestone first needs it). `firmware/`
 implements each against real ESP32 peripherals; `simulator/` implements each against a physics
 model. Both link the same `flight_core` sources unmodified.
 
@@ -69,19 +70,23 @@ scaling, calibration, staleness/validity checks) that *is* automated-tested, by 
 directly (via a relative source path, no `flight_core` dependency yet) into a standalone host
 executable under `tests/`, built with plain CMake/CTest independent of ESP-IDF — see
 `tests/CMakeLists.txt` and `tests/mpu6050_convert_test.c`. Milestone 4 applied the same split to
-the BMP581 barometer driver (`tests/bmp581_convert_test.c`); apply it to later sensor/actuator
-drivers the same way.
+the BMP581 barometer driver (`tests/bmp581_convert_test.c`), and Milestone 5 to the ESC/servo PWM
+output drivers (`tests/pwm_esc_convert_test.c`, `tests/servo_convert_test.c`,
+`tests/pwm_util_test.c`); apply it to later actuator/sensor drivers the same way.
 
 ## What's real vs. stub right now
 
-As of Milestone 4: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
-`main/` that boots FreeRTOS and logs, plus real MPU6050 IMU and BMP581 barometer drivers in
+As of Milestone 5: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
+`main/` that boots FreeRTOS and logs, real MPU6050 IMU and BMP581 barometer drivers in
 `firmware/components/sensors/` (I2C init/config, interrupt-or-polled IMU reads / polled barometer
-reads, raw-to-SI conversion with calibration and filtering, stale-data detection) — neither is yet
-wired into `main/` (that's milestone 6's task architecture) and neither is yet verified against
-real hardware (no physical MPU6050 or BMP581 was available; see
-[docs/hardware.md](docs/hardware.md#mpu6050-milestone-3) and
-[docs/hardware.md](docs/hardware.md#bmp581-milestone-4)). No actuator/radio/estimation/control
+reads, raw-to-SI conversion with calibration and filtering, stale-data detection), and real
+PWM ESC/servo output drivers in `firmware/components/actuators/` (LEDC-generated conventional RC
+PWM behind the `motor_output_t`/`ServoOutput` interfaces, with an explicit `actuators_init_safe()`
+safe-init entry point). None of these are yet wired into `main/` (that's milestone 6's task
+architecture) and none is yet verified against real hardware (no physical MPU6050, BMP581, ESC,
+servo, or motor was available; see [docs/hardware.md](docs/hardware.md#mpu6050-milestone-3),
+[docs/hardware.md](docs/hardware.md#bmp581-milestone-4), and
+[docs/hardware.md](docs/hardware.md#pwm-esc--tilt-servo-milestone-5)). No radio/estimation/control
 code exists yet. `flight_core/CMakeLists.txt` and `simulator/CMakeLists.txt` are still
 non-functional placeholders (commented-out build wiring) — do not expect either to configure or
 build yet. `docs/control.md` and `docs/estimation.md` are intentionally stubs: the force/torque

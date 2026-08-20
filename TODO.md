@@ -53,11 +53,25 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   confidence than Milestone 3's MPU6050 driver (see docs/hardware.md for the full
   verified-vs-deferred breakdown).
 
-- [ ] **5. ESC + servo hardware abstraction**
+- [x] **5. ESC + servo hardware abstraction**
   Deliverable: `MotorOutput` and `ServoOutput` implementations driving the BLHeli ESCs and tilt
   servos (PWM/DShot as appropriate), with configurable protocol/range/calibration.
   Done when: commanded values on hardware produce correct, safely-bounded ESC/servo output,
   verified on a bench (props off).
+  Done via: `firmware/components/actuators/` - `pwm_esc_output.c/.h` (conventional RC PWM over
+  LEDC, implementing the generic `motor_output_t` vtable interface in `motor_output.h` so a future
+  DShot implementation is a drop-in addition) and `servo_output.c/.h` (LEDC PWM tilt-servo
+  output), each paired with a pure `*_convert.c/.h` module (throttle/angle clamping,
+  pulse-width mapping) plus the shared `pwm_util.c/.h` (pulse-width-to-LEDC-duty-count math).
+  `actuators_init_safe()` (`actuators_init.h`) is the explicit safe-init entry point that leaves
+  every motor idle and every servo neutral before returning (not yet wired into `main/` - that's
+  milestone 6). See [docs/hardware.md](docs/hardware.md#pwm-esc--tilt-servo-milestone-5) for the
+  LEDC-vs-MCPWM choice, ESC protocol-determination and calibration guidance, and the full
+  verified-vs-deferred breakdown. `idf.py build` succeeds with the component included;
+  clamping/pulse-mapping/duty-count math has 61 passing host-side checks across
+  `tests/pwm_esc_convert_test.c`, `tests/servo_convert_test.c`, and `tests/pwm_util_test.c`. No
+  physical ESC, servo, or motor was available in this environment, and nothing was armed - all
+  hardware verification is deferred (see docs/hardware.md).
 
 - [ ] **6. FreeRTOS task architecture**
   Deliverable: the task skeleton described in `docs/architecture.md` (SensorTask, EstimatorTask,

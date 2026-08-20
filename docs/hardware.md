@@ -26,8 +26,8 @@ configurable without changing that topology.
 | Item | Status | Where it will be configured |
 |---|---|---|
 | ESP32 board/module (WROOM vs. WROVER vs. S3, pin mapping) | TBD | `firmware/`: a per-board config (e.g. Kconfig / a board header selected at build time) mapping logical peripherals (IMU bus, ESC PWM/DShot channels, servo PWM channels, battery ADC pins) to physical GPIOs. No GPIO numbers belong in `flight_core/` or `simulator/`. |
-| ESC protocol (standard PWM, OneShot, DShot, ...) | TBD | Hidden entirely behind the `MotorOutput` interface (see [architecture.md](architecture.md#hardware-abstraction-layer)); `flight_core` only ever writes a normalized throttle in `[0, 1]`. Protocol selection is a `firmware/` build/runtime config, not a `flight_core` concern. |
-| Servo type/range (analog PWM hobby servo vs. digital, angular range) | TBD | Hidden behind `ServoOutput`; `flight_core` writes an angle in radians in the vehicle's servo-frame convention, and the implementation maps that to the fitted servo's actual PWM range/center-trim, configured per-vehicle. |
+| ESC protocol (standard PWM, OneShot, DShot, ...) | **Standard PWM implemented (Milestone 5); DShot/OneShot TBD** | Hidden entirely behind the `motor_output_t` interface (see [architecture.md](architecture.md#hardware-abstraction-layer) and [PWM ESC + tilt servo (Milestone 5)](#pwm-esc--tilt-servo-milestone-5) below); `flight_core` only ever writes a normalized throttle in `[0, 1]`. Which concrete implementation (`PwmEscOutput` today, a future `DshotEscOutput`) is a `firmware/` build/runtime config, not a `flight_core` concern. |
+| Servo type/range (analog PWM hobby servo vs. digital, angular range) | **PWM output implemented (Milestone 5); exact servo part/range TBD** | Hidden behind `ServoOutput`; `flight_core` writes an angle in radians in the vehicle's servo-frame convention, and the implementation maps that to the fitted servo's actual PWM range/center-trim, configured per-vehicle. See [PWM ESC + tilt servo (Milestone 5)](#pwm-esc--tilt-servo-milestone-5) below. |
 | Barometer model (BMP390 vs. BMP581) | **Chosen: BMP581 (Milestone 4)** | The `Barometer` interface (pressure + temperature + altitude) is part-agnostic; the specific register map lives entirely inside `firmware/components/sensors/bmp581.c`, selected at build time. See [BMP581 (Milestone 4)](#bmp581-milestone-4) below for why this part was picked over the BMP390 and what's configurable. |
 | Number of IMUs (single vs. redundant pair) | TBD, single assumed as the minimum case | Each IMU is one `Imu` instance; sensor-fusion-across-IMUs (if added) is `EstimatorTask` logic operating on however many `Imu` instances are configured, not a change to the interface. |
 | Battery cell count / voltage-divider and current-sense scaling | TBD | Calibration constants (divider ratio, sense-resistor value or hall-sensor scale) live in `firmware/` configuration; the battery-monitor interface exposes calibrated volts/amps, not raw ADC counts. |
@@ -187,6 +187,169 @@ present in this environment to check against — unlike the MPU6050, whose regis
 widely cross-referenced. Also deferred, same as Milestone 3: actual I2C transactions against real
 BMP581 silicon, and real pressure/temperature readings. All of this should be re-verified against
 the physical BMP581 datasheet and real hardware before flight.
+
+## PWM ESC + tilt servo (Milestone 5)
+
+The actuator driver (`firmware/components/actuators/`) drives both BLHeli ESCs and both tilt
+servos with conventional RC PWM generated on the ESP32's LEDC peripheral. No physical ESC, servo,
+or motor was available in this environment, and this milestone explicitly never arms anything -
+see What's verified vs. deferred at the end of this section.
+
+### Why LEDC over MCPWM
+
+ESP-IDF offers two peripherals that can generate this kind of signal: LEDC and MCPWM. LEDC was
+picked because everything this milestone needs is a fixed-frequency, independently-adjustable
+duty cycle per channel (4 channels total: 2 ESC + 2 servo), which is exactly LEDC's use case and
+API shape (`ledc_timer_config()` + `ledc_channel_config()` + `ledc_set_duty_and_update()`).
+MCPWM exists for motor-control signal patterns this project doesn't need yet - complementary
+outputs with configurable dead-time, synchronized multi-channel phase relationships, fault/trip
+inputs - and would be a heavier API for the same result. If a future milestone needs one of those
+(e.g. a brushed-motor H-bridge, which this project does not use), that's the point to bring in
+MCPWM alongside LEDC, not to replace it.
+
+### Interface shapes
+
+- **`ServoOutput`** (`servo_output.h`) is a plain opaque-handle driver, the same shape as
+  `mpu6050.h`/`bmp581.h`: one implementation (PWM) is all that's needed, since hobby/digital tilt
+  servos are overwhelmingly PWM-controlled and no alternative protocol is in view.
+- **`MotorOutput`** (`motor_output.h`) is instead a small C "vtable" - an ops struct of
+  `write`/`set_idle`/`deinit` function pointers plus an opaque `ctx` - because the brief explicitly
+  anticipates a second, non-PWM implementation (DShot). `pwm_esc_output.c/.h` populates that
+  vtable via `pwm_esc_output_as_motor_output()`; a future `dshot_esc_output.c/.h` would do the
+  same from its own state. Code that only ever holds a `motor_output_t` (this milestone's
+  `actuators_init_safe()`, and later milestone 12's control allocation) does not change when that
+  lands - this is the "clean addition, not a rewrite" seam the milestone brief asked for. DShot
+  itself is **not implemented** here; this is only the extension point.
+
+### ESC protocol: how to determine what your BLHeli ESCs actually support
+
+This project assumes standard RC PWM (a 1000-2000us pulse, repeated at a configurable frequency)
+because it is universally supported by every BLHeli/BLHeli_S/BLHeli32 ESC ever made - it's the
+lowest common denominator. Before assuming a specific board's ESCs support something faster
+(DShot150/300/600, Multishot, OneShot125), check:
+
+1. **The ESC's firmware and version.** Plain BLHeli (not BLHeli_S or BLHeli32) generally does not
+   support DShot. BLHeli_S and BLHeli32 do. Reading the firmware off the ESC requires BLHeli
+   Suite (Windows/Linux GUI tool) connected via a compatible USB-to-serial passthrough
+   (a cheap "BLHeli passthrough" adapter, or a flight controller already wired to the ESCs'
+   signal wires running passthrough firmware) - there is no way to determine this from the ESC's
+   markings alone in general, though many modern ESCs print their BLHeli variant on the case.
+2. **The seller/datasheet listing**, which for a modern ESC usually states the supported
+   protocols directly (e.g. "supports DShot600/300/150, Multishot, Oneshot125, PWM").
+3. **If in doubt, use PWM.** It costs nothing but the (real, but for this vehicle's control rates
+   not disqualifying) throughput/latency headroom a digital protocol would buy - see
+   docs/architecture.md's FreeRTOS task table: `FlightControlTask` targets 250-500Hz, well within
+   what even 50Hz PWM's ~2ms worst-case actuation latency can serve, since ESC spin-up/servo slew
+   time already dominates that latency budget far more than the command protocol does.
+
+`pwm_esc_output_config_t.freq_hz` is configurable specifically so a board with confirmed
+higher-PWM-rate-tolerant ESCs (many BLHeli_S/32 ESCs accept PWM well above the traditional 50Hz,
+sometimes 400Hz+) can raise it once that's confirmed for the actual parts in hand - do not raise
+it blind; an ESC that doesn't tolerate a shorter period can behave unpredictably.
+
+### ESC calibration / endpoint-setting, and what it means for `min_throttle`/`max_throttle`
+
+Nearly every PWM-driven ESC (BLHeli included) has a **learned throttle range**: on power-up, it
+compares the very first PWM pulse width it sees against its stored high/low endpoints to decide
+"is this a calibration signal or a normal throttle command." The standard calibration procedure
+(consult your specific ESC's documentation for exact button/beep sequences, since BLHeli variants
+differ) is:
+
+1. Disconnect the ESC's battery power. Set the transmitter/signal source to maximum throttle.
+2. Power on the ESC while it's receiving the max-throttle signal; it beeps to confirm the high
+   point is learned.
+3. Immediately move the signal to minimum throttle; the ESC beeps again to confirm the low point,
+   then arms normally from then on.
+
+Once calibrated, the ESC's own learned endpoints - not necessarily exactly 1000us/2000us - are
+what a given pulse width means to it. `pwm_esc_convert_config_t.min_pulse_us`/`max_pulse_us`
+should be set to match whatever the ESC was actually calibrated to (or, more simply, calibrate
+every ESC on the vehicle to exactly 1000us/2000us using the procedure above, and use those
+literal values here - the more common and less error-prone approach). This driver does **not**
+implement an interactive calibration routine itself (out of scope for this milestone, and safer
+performed deliberately, off-vehicle, with props removed, per standard practice) - milestone 18
+(bench-test tooling) is the natural place for a guided calibration flow if one is wanted. What
+this driver gives instead: `min_throttle`/`max_throttle` (a normalized sub-range clamp, separate
+from the raw pulse endpoints) so a caller can restrict the *commandable* range below what the ESC
+is calibrated to, without re-calibrating the ESC itself - useful for a conservative first-power-on
+throttle ceiling, for instance.
+
+### `invert_direction`: what it does and doesn't do
+
+`pwm_esc_convert_config_t.invert_direction` swaps which pulse endpoint throttle `0.0`/`1.0` map
+to. Be clear about what this can and cannot fix: it does **not** reverse a conventional
+(non-bidirectional) BLHeli ESC's physical motor rotation direction - that is set either by
+physically swapping any two of the three motor phase wires, or via a "motor direction" parameter
+in the ESC's own firmware configuration (BLHeli Suite), and is out of this project's scope to
+automate. `invert_direction` exists for wiring/protocol quirks where the *sense* of the throttle
+command itself needs flipping (e.g. a bidirectional/"3D mode" ESC where the pulse-width range is
+centered and throttle direction is signal-relative) - document on a per-unit basis if and when a
+real vehicle build needs it; do not reach for it as a substitute for the ESC-level fix above.
+
+`servo_convert_config_t.invert_direction` is the more straightforwardly useful case: a tilt
+servo mounted with its horn on the opposite side from its counterpart unit needs its angle
+command mirrored so "more positive tilt" means the same physical direction on both units - this
+is a normal, expected per-unit mounting config, not a workaround.
+
+### Tilt-servo geometry assumptions
+
+No servo part or vehicle frame is chosen yet, so nothing here assumes a specific mechanical tilt
+range. `servo_convert_config_t` carries `min_angle_rad`/`max_angle_rad`/`neutral_angle_rad` as
+plain configuration - the milestone brief's example of a tilt-rotor bicopter typically wants
+something on the order of tens of degrees of tilt authority per side, but the actual number
+depends on the frame/motor-mount geometry chosen when the vehicle is built, and is a
+`firmware/` board-config value, never hardcoded in `servo_output.c`/`servo_convert.c`. "Radians,
+servo-frame" per docs/architecture.md's `ServoOutput` sketch means the angle is in this driver's
+own configured frame (whatever `min_angle_rad`/`max_angle_rad`/`neutral_angle_rad` define it to
+be) - milestone 12's control allocation is responsible for translating body-frame tilt demand
+into this frame once the actual mechanical relationship between servo angle and thrust-vector
+angle is known.
+
+### Safety / init behavior
+
+Per the top-level design brief's hard requirement: on startup, motors must not be armed/active
+and servos must move to a safe neutral position before anything else touches actuators. This is
+implemented at two levels, not just documented as a convention:
+
+1. **Each unit's own `_init()` already idles/neutrals as a side effect of construction.**
+   `pwm_esc_output_init()` configures its LEDC channel with `convert.idle_pulse_us` as the
+   *initial* duty (never an undefined or zero duty, which a BLHeli ESC could read as "no signal"
+   rather than a deliberate idle command); `servo_output_init()` does the same with
+   `convert.neutral_angle_rad`. There is no window, even for a single unit, where a handle exists
+   but hasn't been idled/neutraled yet.
+2. **`actuators_init_safe()`** (`actuators_init.h`) is the single sanctioned entry point that
+   produces working actuator handles at all - it initializes both tilt-rotor units in order, and
+   on any single unit's init failure, deinitializes everything already created before returning
+   the error, so a caller can never be handed a partially-initialized `actuators_t`. This function
+   is not wired into `main/` yet - that is milestone 6's task-architecture job - but it exists now
+   as the obvious, explicit code path that milestone will call before starting any other actuator
+   activity.
+
+Out-of-range commands (`pwm_esc_output_write()`/`servo_output_write()` given a throttle/angle
+outside the configured range, including non-finite input) are **clamped and logged** (`ESP_LOGW`),
+not rejected outright. This was chosen over hard rejection because a flight-control loop should
+never leave an actuator holding a stale or uncommanded output just because one input sample was
+out of range - always producing a bounded, defined output is the safer behavior for a real-time
+control path, while the warning log still makes the out-of-range condition visible for
+post-flight diagnosis. The pure clamping logic itself (`pwm_esc_clamp_throttle()`/
+`servo_clamp_angle()`) is what's unit-tested; the logging call sites are the thin ESP-IDF-facing
+wrappers around it.
+
+### What's verified vs. deferred
+
+No physical ESC, servo, or motor was available in this environment, and per this milestone's
+explicit scope, nothing was armed. Verified: `idf.py build` succeeds with this component included
+(clean full rebuild, no warnings from this project's code); the normalized-throttle/angle clamping,
+throttle/angle-to-pulse-width mapping, and pulse-width-to-LEDC-duty-count math have passing
+automated tests (`tests/pwm_esc_convert_test.c`, `tests/servo_convert_test.c`,
+`tests/pwm_util_test.c`, run via host `ctest`); the LEDC configuration code
+(`pwm_esc_output.c`/`servo_output.c`) was reviewed against ESP-IDF's `driver/ledc.h` API (read
+directly from the installed ESP-IDF v5.5.5 source tree, not from memory) and against standard RC
+PWM/BLHeli timing conventions (1000-2000us pulse, configurable frequency, ESC-learned endpoint
+calibration). Not verified, and deferred until real hardware is available: actual PWM signal
+generation on a real GPIO/oscilloscope, whether a real ESC/servo responds correctly to the
+generated signal, and the interactive ESC-calibration procedure described above (which was not
+implemented, only documented).
 
 ## Configuration philosophy
 
