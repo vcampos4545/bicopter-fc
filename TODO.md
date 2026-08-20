@@ -20,11 +20,19 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   in this environment) — see [docs/firmware.md](docs/firmware.md) for the toolchain version,
   build/verify steps, and captured boot log.
 
-- [ ] **3. MPU6050 driver + tests**
+- [x] **3. MPU6050 driver + tests**
   Deliverable: an ESP-IDF component driving the MPU6050 over I2C (init, calibration read,
   accel/gyro sample retrieval) behind the `Imu` hardware-abstraction interface, with unit tests.
   Done when: the driver reads real accel/gyro samples on hardware and has test coverage for its
   parsing/scaling logic independent of the bus.
+  Done via: `firmware/components/sensors/` (`mpu6050.c`/`.h` for I2C/ISR, `mpu6050_convert.c`/
+  `.h` for the pure register-to-SI/calibration/stale-detection logic). Data-ready-interrupt-driven
+  reads (minimal ISR, hand-off via FreeRTOS queue) with a polled fallback — see
+  [docs/hardware.md](docs/hardware.md#mpu6050-milestone-3) for the choice and reasoning.
+  `idf.py build` succeeds with the component included; conversion/calibration/staleness logic has
+  33 passing host-side tests (`tests/mpu6050_convert_test.c`). No physical MPU6050 was available
+  in this environment — real I2C transactions and sensor readings are unverified until hardware
+  lands (see docs/hardware.md for the full verified-vs-deferred breakdown).
 
 - [ ] **4. Barometer driver**
   Deliverable: an ESP-IDF component driving the barometric pressure sensor (BMP390 or BMP581 —

@@ -50,15 +50,40 @@ reasoning: [docs/architecture.md](docs/architecture.md#hardware-abstraction-laye
 hardware questions and where each is meant to become configurable:
 [docs/hardware.md](docs/hardware.md).
 
+Until `flight_core` exists, each `firmware/components/*` driver defines its own local plain-C
+struct matching its interface's documented shape (e.g. `firmware/components/sensors/include/
+imu.h`'s `imu_reading_t`, added in Milestone 3) instead of waiting on a not-yet-real shared
+header. These are deliberately free of ESP-IDF types so they double as the boundary pure/testable
+logic is written against (see below). When `flight_core` adds the authoritative HAL interface
+headers, reconcile each driver's local copy against them in that same change rather than leaving
+two shapes to drift apart.
+
+## Driver testing convention
+
+Firmware-side I/O (I2C/SPI transactions, GPIO/ISR behavior) can't be unit tested without real
+silicon or a peripheral-accurate emulator (QEMU's `esp32` machine does not model attached I2C
+devices). The convention, established in Milestone 3 for the MPU6050 driver: split each driver
+into (a) hardware I/O code that depends on ESP-IDF types and is reviewed against the part's
+datasheet but not automated-tested pre-hardware, and (b) pure, ESP-IDF-free logic (register
+scaling, calibration, staleness/validity checks) that *is* automated-tested, by compiling it
+directly (via a relative source path, no `flight_core` dependency yet) into a standalone host
+executable under `tests/`, built with plain CMake/CTest independent of ESP-IDF — see
+`tests/CMakeLists.txt` and `tests/mpu6050_convert_test.c`. Apply the same split to later
+sensor/actuator drivers (e.g. the barometer, milestone 4).
+
 ## What's real vs. stub right now
 
-As of Milestone 2: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
-`main/` that boots FreeRTOS and logs — no sensor/actuator/radio/estimation/control code yet.
-`flight_core/CMakeLists.txt` and `simulator/CMakeLists.txt` are still non-functional placeholders
-(commented-out build wiring) — do not expect either to configure or build yet.
-`docs/control.md` and `docs/estimation.md` are intentionally stubs: the force/torque model,
-control-allocation math, and attitude-estimation algorithm must be *derived* from real vehicle
-geometry/sensor data in their respective milestones, not invented ahead of time. See
+As of Milestone 3: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
+`main/` that boots FreeRTOS and logs, plus a real MPU6050 IMU driver in
+`firmware/components/sensors/` (I2C init/config, interrupt-or-polled reads, raw-to-SI conversion
+with calibration, stale-data detection) — not yet wired into `main/` (that's milestone 6's task
+architecture) and not yet verified against real hardware (no physical MPU6050 was available; see
+[docs/hardware.md](docs/hardware.md#mpu6050-milestone-3)). No actuator/radio/estimation/control
+code exists yet. `flight_core/CMakeLists.txt` and `simulator/CMakeLists.txt` are still
+non-functional placeholders (commented-out build wiring) — do not expect either to configure or
+build yet. `docs/control.md` and `docs/estimation.md` are intentionally stubs: the force/torque
+model, control-allocation math, and attitude-estimation algorithm must be *derived* from real
+vehicle geometry/sensor data in their respective milestones, not invented ahead of time. See
 [TODO.md](TODO.md) for the full milestone sequence and current status.
 
 ## Firmware toolchain

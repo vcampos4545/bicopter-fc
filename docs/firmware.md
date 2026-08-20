@@ -111,12 +111,13 @@ above).
 ## What's deferred to later milestones
 
 - Real-hardware flash/boot (needs a physical ESP32 board; not available here).
-- Any sensor (MPU6050, barometer), actuator (ESC/servo PWM), or radio (ESP-NOW/RC) driver code
-  or initialization — `main/` only boots FreeRTOS and logs. Per `AGENTS.md`, the boot sequence
-  is deliberately `BOOT -> (nothing else armed yet) -> log ready` so those milestones have an
-  obvious place to slot in without restructuring `main/`.
-- Component registration for `firmware/components/{sensors,actuators,radio,estimation,control,
-  safety,telemetry}/` — each stays a `.gitkeep`'d stub until its own milestone adds real code
-  and a `CMakeLists.txt`.
+- Actuator (ESC/servo PWM) or radio (ESP-NOW/RC) driver code or initialization, and wiring any
+  driver — including the MPU6050 driver added in Milestone 3
+  (`firmware/components/sensors/`) — into `main/`. `main/` still only boots FreeRTOS and logs;
+  per `AGENTS.md`, the boot sequence is deliberately `BOOT -> (nothing else armed yet) -> log
+  ready`, and task-architecture wiring is Milestone 6's job, not this one.
+- Component registration for `firmware/components/{actuators,radio,estimation,control,safety,
+  telemetry}/` — each stays a `.gitkeep`'d stub until its own milestone adds real code and a
+  `CMakeLists.txt` (`sensors/` is real as of Milestone 3).
 - Board-specific pin mapping / Kconfig — deferred until a specific board is chosen (see
   [hardware.md](hardware.md)); only the chip target (`esp32`) is configured so far.
