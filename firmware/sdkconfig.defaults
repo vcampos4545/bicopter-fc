@@ -1,0 +1,8 @@
+# Committed defaults for this project's sdkconfig. The full generated `sdkconfig` is
+# gitignored (see ../.gitignore) since it's a per-checkout artifact of `idf.py set-target`
+# plus whatever local config a contributor has layered on top.
+#
+# Only the chip target is pinned here — plain "esp32", no specific board/pinout assumed
+# (see ../docs/hardware.md). Anyone can `idf.py set-target esp32` in a fresh checkout and get
+# this back; `idf.py build` also regenerates `sdkconfig` from this file if it's missing.
+CONFIG_IDF_TARGET="esp32"
