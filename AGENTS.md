@@ -68,17 +68,20 @@ datasheet but not automated-tested pre-hardware, and (b) pure, ESP-IDF-free logi
 scaling, calibration, staleness/validity checks) that *is* automated-tested, by compiling it
 directly (via a relative source path, no `flight_core` dependency yet) into a standalone host
 executable under `tests/`, built with plain CMake/CTest independent of ESP-IDF — see
-`tests/CMakeLists.txt` and `tests/mpu6050_convert_test.c`. Apply the same split to later
-sensor/actuator drivers (e.g. the barometer, milestone 4).
+`tests/CMakeLists.txt` and `tests/mpu6050_convert_test.c`. Milestone 4 applied the same split to
+the BMP581 barometer driver (`tests/bmp581_convert_test.c`); apply it to later sensor/actuator
+drivers the same way.
 
 ## What's real vs. stub right now
 
-As of Milestone 3: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
-`main/` that boots FreeRTOS and logs, plus a real MPU6050 IMU driver in
-`firmware/components/sensors/` (I2C init/config, interrupt-or-polled reads, raw-to-SI conversion
-with calibration, stale-data detection) — not yet wired into `main/` (that's milestone 6's task
-architecture) and not yet verified against real hardware (no physical MPU6050 was available; see
-[docs/hardware.md](docs/hardware.md#mpu6050-milestone-3)). No actuator/radio/estimation/control
+As of Milestone 4: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
+`main/` that boots FreeRTOS and logs, plus real MPU6050 IMU and BMP581 barometer drivers in
+`firmware/components/sensors/` (I2C init/config, interrupt-or-polled IMU reads / polled barometer
+reads, raw-to-SI conversion with calibration and filtering, stale-data detection) — neither is yet
+wired into `main/` (that's milestone 6's task architecture) and neither is yet verified against
+real hardware (no physical MPU6050 or BMP581 was available; see
+[docs/hardware.md](docs/hardware.md#mpu6050-milestone-3) and
+[docs/hardware.md](docs/hardware.md#bmp581-milestone-4)). No actuator/radio/estimation/control
 code exists yet. `flight_core/CMakeLists.txt` and `simulator/CMakeLists.txt` are still
 non-functional placeholders (commented-out build wiring) — do not expect either to configure or
 build yet. `docs/control.md` and `docs/estimation.md` are intentionally stubs: the force/torque

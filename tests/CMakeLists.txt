@@ -22,3 +22,12 @@ target_include_directories(mpu6050_convert_test PRIVATE ${SENSORS_DIR}/include)
 target_link_libraries(mpu6050_convert_test m)
 
 add_test(NAME mpu6050_convert_test COMMAND mpu6050_convert_test)
+
+add_executable(bmp581_convert_test
+    bmp581_convert_test.c
+    ${SENSORS_DIR}/src/bmp581_convert.c
+)
+target_include_directories(bmp581_convert_test PRIVATE ${SENSORS_DIR}/include)
+target_link_libraries(bmp581_convert_test m)
+
+add_test(NAME bmp581_convert_test COMMAND bmp581_convert_test)

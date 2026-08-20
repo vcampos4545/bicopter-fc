@@ -72,9 +72,16 @@ Working interface shape (refined as later milestones implement them):
 - **`Imu`** — `read() -> { accel: Vec3 (m/s^2, body frame), gyro: Vec3 (rad/s, body frame),
   timestamp }`. Multiple IMUs are multiple `Imu` instances; fusion across them is an
   `EstimatorTask` concern, not something the interface itself does.
-- **`Barometer`** — `read() -> { pressure: float (Pa), temperature: float (K), timestamp }`.
-  Pressure-to-altitude conversion lives in `flight_core`, not the driver, so the estimator isn't
-  coupled to a specific part's compensation algorithm.
+- **`Barometer`** — `read() -> { pressure: float (Pa), temperature: float (degC), altitude: float
+  (m, standard barometric formula relative to a configurable sea-level reference pressure),
+  timestamp, valid }`. Revised in Milestone 4 from this document's original sketch (which put
+  altitude derivation in `flight_core` and used Kelvin): the driver now derives a simple,
+  single-sensor altitude itself (with configurable pressure smoothing) so it's usable standalone
+  without a working estimator, and uses Celsius directly. Neither change couples anything to a
+  specific part's quirks — the barometric-formula math and filtering are pure, part-agnostic logic
+  (`firmware/components/sensors/bmp581_convert.c`). The future state estimator (Milestone 8) is
+  still free to fuse `pressure` (or `altitude`) with IMU data for a better-behaved fused estimate;
+  see [docs/hardware.md](hardware.md#bmp581-milestone-4) for the full reasoning.
 - **`MotorOutput`** — `write(throttle: float in [0, 1])` for one motor/ESC channel. Protocol
   (PWM, DShot, ...) and calibration are hidden behind the implementation.
 - **`ServoOutput`** — `write(angle: float, radians, servo-frame)` for one tilt servo. Range
