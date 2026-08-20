@@ -34,12 +34,24 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   in this environment — real I2C transactions and sensor readings are unverified until hardware
   lands (see docs/hardware.md for the full verified-vs-deferred breakdown).
 
-- [ ] **4. Barometer driver**
+- [x] **4. Barometer driver**
   Deliverable: an ESP-IDF component driving the barometric pressure sensor (BMP390 or BMP581 —
   whichever is fitted) behind the `Barometer` interface, without coupling any downstream code
   to the specific part.
   Done when: the driver reads pressure/temperature on hardware and altitude derivation is
   covered by a unit test independent of the bus.
+  Done via: `firmware/components/sensors/` (`bmp581.c`/`.h` for I2C, `bmp581_convert.c`/`.h` for
+  the pure register-to-SI/filtering/altitude/stale-detection logic). BMP581 chosen over BMP390 for
+  its simpler register interface (already-compensated output, no OTP trim-coefficient polynomial)
+  — see [docs/hardware.md](docs/hardware.md#bmp581-milestone-4) for the choice and reasoning.
+  Polled reads (continuous power mode, no data-ready interrupt — baro dynamics are slow enough
+  that this wasn't worth the MPU6050 driver's ISR complexity). `idf.py build` succeeds with the
+  component included; pressure/temperature conversion, EMA pressure filtering, barometric-formula
+  altitude derivation, and staleness logic have 14 passing host-side test groups
+  (`tests/bmp581_convert_test.c`). No physical BMP581 was available in this environment — real I2C
+  transactions and sensor readings are unverified, and the register map itself carries lower
+  confidence than Milestone 3's MPU6050 driver (see docs/hardware.md for the full
+  verified-vs-deferred breakdown).
 
 - [ ] **5. ESC + servo hardware abstraction**
   Deliverable: `MotorOutput` and `ServoOutput` implementations driving the BLHeli ESCs and tilt

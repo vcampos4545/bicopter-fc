@@ -7,13 +7,14 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 3 (MPU6050 driver + tests) is complete. `firmware/` is a real ESP-IDF
-v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
-[docs/firmware.md](docs/firmware.md)), and `firmware/components/sensors/` has a real MPU6050 I2C
-driver with host-side unit tests for its conversion/calibration/stale-detection logic (see
-[docs/hardware.md](docs/hardware.md)) — no real hardware was available to verify actual I2C
-transactions. No controllers, estimator, or simulator physics exist yet — see
-[TODO.md](TODO.md) for the full roadmap and what's implemented so far.
+**Status:** Milestone 4 (BMP581 barometer driver + tests) is complete. `firmware/` is a real
+ESP-IDF v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
+[docs/firmware.md](docs/firmware.md)), and `firmware/components/sensors/` has real MPU6050 IMU
+and BMP581 barometer I2C drivers with host-side unit tests for their
+conversion/calibration/filtering/stale-detection logic (see [docs/hardware.md](docs/hardware.md))
+— no real hardware was available to verify actual I2C transactions. No controllers, estimator, or
+simulator physics exist yet — see [TODO.md](TODO.md) for the full roadmap and what's implemented
+so far.
 
 ## Target vehicle
 
@@ -25,8 +26,9 @@ than hardcoded (see [docs/hardware.md](docs/hardware.md)).
 - 2 tilt servos, one per motor (this is a bicopter: pitch/roll authority comes partly from
   differential thrust, partly from vectoring each motor's thrust angle via its servo)
 - MPU6050 IMU(s)
-- A barometric pressure sensor — BMP390 or BMP581; the estimator must not be coupled to a
-  specific part (see [docs/estimation.md](docs/estimation.md))
+- A barometric pressure sensor — BMP581 (chosen in Milestone 4, see
+  [docs/hardware.md](docs/hardware.md#bmp581-milestone-4)); the estimator must not be coupled to
+  a specific part (see [docs/estimation.md](docs/estimation.md))
 - A LiPo battery with voltage/current monitoring
 - A future radio link (ESP-NOW first, conventional RC receiver later)
 - No GPS initially
@@ -134,9 +136,9 @@ cmake --build simulator/build
 
 ### tests/
 
-As of Milestone 3: host-side tests for the sensors component's pure conversion/calibration/
-stale-detection logic, built independently of ESP-IDF via plain CMake/CTest (no `flight_core`
-dependency yet, since `flight_core` remains an unimplemented stub).
+As of Milestone 4: host-side tests for the sensors component's pure conversion/calibration/
+filtering/stale-detection logic (MPU6050 and BMP581), built independently of ESP-IDF via plain
+CMake/CTest (no `flight_core` dependency yet, since `flight_core` remains an unimplemented stub).
 
 ```sh
 cmake -S tests -B tests/build
