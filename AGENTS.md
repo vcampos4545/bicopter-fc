@@ -52,13 +52,23 @@ hardware questions and where each is meant to become configurable:
 
 ## What's real vs. stub right now
 
-As of Milestone 1: only structure and documentation exist. `firmware/CMakeLists.txt`,
-`flight_core/CMakeLists.txt`, and `simulator/CMakeLists.txt` are non-functional placeholders
-(commented-out build wiring) — do not expect any of the three to configure or build yet.
+As of Milestone 2: `firmware/` is a real, buildable ESP-IDF project (see below) with a minimal
+`main/` that boots FreeRTOS and logs — no sensor/actuator/radio/estimation/control code yet.
+`flight_core/CMakeLists.txt` and `simulator/CMakeLists.txt` are still non-functional placeholders
+(commented-out build wiring) — do not expect either to configure or build yet.
 `docs/control.md` and `docs/estimation.md` are intentionally stubs: the force/torque model,
 control-allocation math, and attitude-estimation algorithm must be *derived* from real vehicle
 geometry/sensor data in their respective milestones, not invented ahead of time. See
 [TODO.md](TODO.md) for the full milestone sequence and current status.
+
+## Firmware toolchain
+
+- ESP-IDF **v5.5.5**, target chip **`esp32`** (pinned in `firmware/sdkconfig.defaults`; no
+  specific board/pinout chosen yet — see [docs/hardware.md](docs/hardware.md)).
+- Install/build/flash instructions and how boot is verified (QEMU, since no physical board is
+  available in this environment): [docs/firmware.md](docs/firmware.md).
+- `firmware/sdkconfig` (the full generated config) is gitignored; only `sdkconfig.defaults` is
+  committed. A fresh checkout just needs `idf.py build` — target is already pinned.
 
 ## Maintaining this file
 

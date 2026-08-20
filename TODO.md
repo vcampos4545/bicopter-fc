@@ -11,11 +11,14 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   `docs/estimation.md`.
   Done when: structure and docs exist, commit clean, no placeholder flight-control code.
 
-- [ ] **2. ESP-IDF boots**
+- [x] **2. ESP-IDF boots**
   Deliverable: a minimal `firmware/` ESP-IDF project that builds and flashes, bringing up
   logging and confirming the target board boots to a known-good idle state.
   Done when: `idf.py build` succeeds and the board boots and logs over serial on real hardware
   (or documented reason real hardware wasn't available).
+  Done via: ESP-IDF v5.5.5, target `esp32`, boot verified in QEMU (no physical board available
+  in this environment) — see [docs/firmware.md](docs/firmware.md) for the toolchain version,
+  build/verify steps, and captured boot log.
 
 - [ ] **3. MPU6050 driver + tests**
   Deliverable: an ESP-IDF component driving the MPU6050 over I2C (init, calibration read,

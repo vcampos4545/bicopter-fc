@@ -7,7 +7,8 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 1 (repository structure, architecture, and documentation) is complete.
+**Status:** Milestone 2 (ESP-IDF boots) is complete. `firmware/` is a real ESP-IDF v5.5.5
+project targeting `esp32`; boot is verified in QEMU (see [docs/firmware.md](docs/firmware.md)).
 No drivers, controllers, estimator, or simulator physics exist yet — see [TODO.md](TODO.md) for
 the full roadmap and what's implemented so far.
 
@@ -90,20 +91,21 @@ Used consistently across all code and documentation in this repository:
 
 ## Build instructions
 
-Nothing in this repository is buildable yet — Milestone 1 is structure and documentation only.
-This section documents the intended build story per component; it will be filled in as each
-piece lands.
+`firmware/` is buildable as of Milestone 2; the other components are not yet. This section
+documents the intended build story per component; it will be filled in as each piece lands.
 
 ### firmware/ (ESP-IDF)
 
-Not yet implemented (Milestone 2: "ESP-IDF boots"). Once it exists:
-
 ```sh
+source ~/esp/esp-idf/export.sh   # after installing ESP-IDF v5.5.5, see docs/firmware.md
 cd firmware
-idf.py set-target esp32
 idf.py build
-idf.py -p <PORT> flash monitor
+idf.py -p <PORT> flash monitor   # real hardware; not yet verified, see docs/firmware.md
+idf.py qemu                      # boot verification without hardware
 ```
+
+See [docs/firmware.md](docs/firmware.md) for the full toolchain install, build, and QEMU
+boot-verification story.
 
 ### flight_core/ (platform-independent library)
 
@@ -136,6 +138,7 @@ and the simulator.
 
 - [TODO.md](TODO.md) — engineering roadmap, 18 milestones
 - [docs/architecture.md](docs/architecture.md) — pipeline, data flow, HAL design, FreeRTOS tasks
+- [docs/firmware.md](docs/firmware.md) — ESP-IDF toolchain version, build steps, QEMU boot verification
 - [docs/hardware.md](docs/hardware.md) — hardware assumptions and how they're made configurable
 - [docs/control.md](docs/control.md) — control approach (stub; derived in the control milestones)
 - [docs/estimation.md](docs/estimation.md) — estimation approach (stub; derived in that milestone)
