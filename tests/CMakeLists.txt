@@ -41,6 +41,7 @@ set(ACTUATORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/actuators)
 set(RADIO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/radio)
 set(SAFETY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/safety)
 set(POWER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/power)
+set(BENCH_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/bench_test)
 set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/main)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../flight_core flight_core-build)
@@ -222,3 +223,38 @@ add_executable(battery_convert_test
 target_include_directories(battery_convert_test PRIVATE ${POWER_DIR}/include)
 
 add_test(NAME battery_convert_test COMMAND battery_convert_test)
+
+# Milestone 18 (see ../docs/bench_test.md): bench_test_command.c (the pure line parser behind the
+# bench-test console) follows the same host-testable-pure-logic split as everything above -
+# firmware/components/bench_test/src/bench_test_console.c (the ESP-IDF UART driver I/O half) is
+# not host-testable, same reasoning as radio/crsf's own driver files.
+add_executable(bench_test_command_test
+    bench_test_command_test.c
+    ${BENCH_TEST_DIR}/src/bench_test_command.c
+)
+target_include_directories(bench_test_command_test PRIVATE ${BENCH_TEST_DIR}/include)
+
+add_test(NAME bench_test_command_test COMMAND bench_test_command_test)
+
+# The BENCH_TEST motor-disable compile-time gate (docs/bench_test.md): pwm_esc_bench_test.h
+# translates CONFIG_BICOPTER_BENCH_TEST_MOTORS_DISABLED into an always-defined macro. Built twice
+# from the same source, once simulating every normal build (macro undefined) and once simulating a
+# real BENCH_TEST build (-DCONFIG_BICOPTER_BENCH_TEST_MOTORS_DISABLED=1) - see
+# pwm_esc_bench_test_gate_test.c's file header for exactly what this does and doesn't prove.
+add_executable(pwm_esc_bench_test_gate_test
+    pwm_esc_bench_test_gate_test.c
+)
+target_include_directories(pwm_esc_bench_test_gate_test PRIVATE ${ACTUATORS_DIR}/include)
+
+add_test(NAME pwm_esc_bench_test_gate_test COMMAND pwm_esc_bench_test_gate_test)
+
+add_executable(pwm_esc_bench_test_gate_disabled_test
+    pwm_esc_bench_test_gate_test.c
+)
+target_include_directories(pwm_esc_bench_test_gate_disabled_test PRIVATE ${ACTUATORS_DIR}/include)
+target_compile_definitions(pwm_esc_bench_test_gate_disabled_test PRIVATE
+    CONFIG_BICOPTER_BENCH_TEST_MOTORS_DISABLED=1
+    PWM_ESC_BENCH_TEST_GATE_EXPECT_DISABLED=1
+)
+
+add_test(NAME pwm_esc_bench_test_gate_disabled_test COMMAND pwm_esc_bench_test_gate_disabled_test)

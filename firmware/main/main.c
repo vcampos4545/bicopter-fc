@@ -10,6 +10,11 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
+#include "sdkconfig.h"
+
+#include "actuators_init.h"
+#include "actuators_state.h"
+#include "bench_test_task.h"
 #include "estimator_task.h"
 #include "flight_control_task.h"
 #include "radio_state.h"
@@ -58,16 +63,104 @@ void app_main(void)
     ESP_ERROR_CHECK(safety_state_init());
     ESP_ERROR_CHECK(radio_state_init());
 
-    // -> actuators are intentionally NOT initialized here. actuators_init_safe()
-    // (firmware/components/actuators/include/actuators_init.h) exists and its own docs name this
-    // milestone as where it gets wired in, but doing so needs a real per-board GPIO/PWM config
-    // (see docs/hardware.md's open ESC/servo pin items) that does not exist without a chosen
-    // board, and this milestone's scope explicitly excludes actuator-driving logic from the task
-    // bodies. The natural call site (before FlightControlTask starts, so every motor/servo is
-    // idle/neutral before any control-path task runs) is documented here for whichever milestone
-    // finalizes the board config to wire in without re-deriving where it goes.
-    ESP_LOGI(TAG, "actuators_init_safe() not called (no board/PWM pin config chosen yet - see "
+    // -> actuators. Milestone 18 (see docs/bench_test.md) finally calls actuators_init_safe() at
+    // the call site AGENTS.md's Milestone 5/6 entries already documented - before any control-path
+    // task runs, so every motor/servo is idle/neutral first - but only when
+    // CONFIG_BICOPTER_ACTUATORS_ENABLED is set (default off, same "no board chosen yet" gating
+    // every other optional-hardware component in this project uses). While disabled, actuators
+    // remain uninitialized this boot exactly as every milestone through 17 has left them; the
+    // bench-test console's servo/esc_test commands (bench_test_task.c) report "not initialized"
+    // rather than attempting to drive a GPIO nothing is connected to.
+#if CONFIG_BICOPTER_ACTUATORS_ENABLED
+    actuators_config_t actuators_cfg = {
+        .units = {
+            [0] = {
+                .motor = {
+                    .gpio = (gpio_num_t)CONFIG_BICOPTER_MOTOR1_GPIO,
+                    .ledc_timer = LEDC_TIMER_0,
+                    .ledc_channel = LEDC_CHANNEL_0,
+                    .ledc_speed_mode = LEDC_LOW_SPEED_MODE,
+                    .freq_hz = CONFIG_BICOPTER_ACTUATOR_PWM_FREQ_HZ,
+                    .duty_resolution_bits = CONFIG_BICOPTER_ACTUATOR_PWM_DUTY_RESOLUTION_BITS,
+                    .convert = {
+                        .min_throttle = 0.0f,
+                        .max_throttle = 1.0f,
+                        .min_pulse_us = CONFIG_BICOPTER_ESC_MIN_PULSE_US,
+                        .max_pulse_us = CONFIG_BICOPTER_ESC_MAX_PULSE_US,
+                        .idle_pulse_us = CONFIG_BICOPTER_ESC_IDLE_PULSE_US,
+                        .invert_direction = false,
+                    },
+                },
+                .servo = {
+                    .gpio = (gpio_num_t)CONFIG_BICOPTER_SERVO1_GPIO,
+                    .ledc_timer = LEDC_TIMER_1,
+                    .ledc_channel = LEDC_CHANNEL_2,
+                    .ledc_speed_mode = LEDC_LOW_SPEED_MODE,
+                    .freq_hz = CONFIG_BICOPTER_ACTUATOR_PWM_FREQ_HZ,
+                    .duty_resolution_bits = CONFIG_BICOPTER_ACTUATOR_PWM_DUTY_RESOLUTION_BITS,
+                    .convert = {
+                        .min_angle_rad = (float)CONFIG_BICOPTER_SERVO_MIN_ANGLE_MILLIRAD / 1000.0f,
+                        .max_angle_rad = (float)CONFIG_BICOPTER_SERVO_MAX_ANGLE_MILLIRAD / 1000.0f,
+                        .neutral_angle_rad =
+                            (float)CONFIG_BICOPTER_SERVO_NEUTRAL_ANGLE_MILLIRAD / 1000.0f,
+                        .min_pulse_us = CONFIG_BICOPTER_SERVO_MIN_PULSE_US,
+                        .max_pulse_us = CONFIG_BICOPTER_SERVO_MAX_PULSE_US,
+                        .invert_direction = false,
+                    },
+                },
+            },
+            [1] = {
+                .motor = {
+                    .gpio = (gpio_num_t)CONFIG_BICOPTER_MOTOR2_GPIO,
+                    .ledc_timer = LEDC_TIMER_0,
+                    .ledc_channel = LEDC_CHANNEL_1,
+                    .ledc_speed_mode = LEDC_LOW_SPEED_MODE,
+                    .freq_hz = CONFIG_BICOPTER_ACTUATOR_PWM_FREQ_HZ,
+                    .duty_resolution_bits = CONFIG_BICOPTER_ACTUATOR_PWM_DUTY_RESOLUTION_BITS,
+                    .convert = {
+                        .min_throttle = 0.0f,
+                        .max_throttle = 1.0f,
+                        .min_pulse_us = CONFIG_BICOPTER_ESC_MIN_PULSE_US,
+                        .max_pulse_us = CONFIG_BICOPTER_ESC_MAX_PULSE_US,
+                        .idle_pulse_us = CONFIG_BICOPTER_ESC_IDLE_PULSE_US,
+                        .invert_direction = false,
+                    },
+                },
+                .servo = {
+                    .gpio = (gpio_num_t)CONFIG_BICOPTER_SERVO2_GPIO,
+                    .ledc_timer = LEDC_TIMER_1,
+                    .ledc_channel = LEDC_CHANNEL_3,
+                    .ledc_speed_mode = LEDC_LOW_SPEED_MODE,
+                    .freq_hz = CONFIG_BICOPTER_ACTUATOR_PWM_FREQ_HZ,
+                    .duty_resolution_bits = CONFIG_BICOPTER_ACTUATOR_PWM_DUTY_RESOLUTION_BITS,
+                    .convert = {
+                        .min_angle_rad = (float)CONFIG_BICOPTER_SERVO_MIN_ANGLE_MILLIRAD / 1000.0f,
+                        .max_angle_rad = (float)CONFIG_BICOPTER_SERVO_MAX_ANGLE_MILLIRAD / 1000.0f,
+                        .neutral_angle_rad =
+                            (float)CONFIG_BICOPTER_SERVO_NEUTRAL_ANGLE_MILLIRAD / 1000.0f,
+                        .min_pulse_us = CONFIG_BICOPTER_SERVO_MIN_PULSE_US,
+                        .max_pulse_us = CONFIG_BICOPTER_SERVO_MAX_PULSE_US,
+                        .invert_direction = false,
+                    },
+                },
+            },
+        },
+    };
+    actuators_t actuators;
+    esp_err_t actuators_err = actuators_init_safe(&actuators_cfg, &actuators);
+    if (actuators_err == ESP_OK) {
+        actuators_state_set(&actuators, true);
+        ESP_LOGI(TAG, "actuators initialized (motors idle, servos neutral)");
+    } else {
+        actuators_state_set(NULL, false);
+        ESP_LOGE(TAG, "actuators_init_safe failed: %s; actuators unavailable this boot",
+                 esp_err_to_name(actuators_err));
+    }
+#else
+    actuators_state_set(NULL, false);
+    ESP_LOGI(TAG, "CONFIG_BICOPTER_ACTUATORS_ENABLED=n (no board/PWM pin config chosen yet - see "
                   "docs/hardware.md); actuators remain uninitialized this boot");
+#endif
 
     // -> tasks. SensorTask and EstimatorTask share the sample queue; SafetyTask needs
     // FlightControlTask's handle to notify it, so FlightControlTask is created first.
@@ -80,11 +173,15 @@ void app_main(void)
     static safety_task_params_t safety_params;
     safety_params.sensor_sample_queue = s_sensor_sample_queue;
 
+    static bench_test_task_params_t bench_test_params;
+    bench_test_params.sensor_sample_queue = s_sensor_sample_queue;
+
     TaskHandle_t flight_control_handle = NULL;
     TaskHandle_t sensor_handle = NULL;
     TaskHandle_t estimator_handle = NULL;
     TaskHandle_t radio_handle = NULL;
     TaskHandle_t safety_handle = NULL;
+    TaskHandle_t bench_test_handle = NULL;
 
     xTaskCreate(flight_control_task, "FlightControlTask", BICOPTER_TASK_STACK_SIZE_BYTES, NULL,
                 FLIGHT_CONTROL_TASK_PRIORITY, &flight_control_handle);
@@ -100,9 +197,12 @@ void app_main(void)
                 TELEMETRY_TASK_PRIORITY, &s_telemetry_task_handle);
     xTaskCreate(safety_task, "SafetyTask", BICOPTER_TASK_STACK_SIZE_BYTES, &safety_params,
                 SAFETY_TASK_PRIORITY, &safety_handle);
+    xTaskCreate(bench_test_task, "BenchTestTask", BICOPTER_TASK_STACK_SIZE_BYTES, &bench_test_params,
+                BENCH_TEST_TASK_PRIORITY, &bench_test_handle);
 
     if (flight_control_handle == NULL || sensor_handle == NULL || estimator_handle == NULL ||
-        radio_handle == NULL || s_telemetry_task_handle == NULL || safety_handle == NULL) {
+        radio_handle == NULL || s_telemetry_task_handle == NULL || safety_handle == NULL ||
+        bench_test_handle == NULL) {
         ESP_LOGE(TAG, "one or more tasks failed to create");
         abort();
     }
@@ -120,9 +220,16 @@ void app_main(void)
                   "sdkconfig.defaults); each task subscribes itself via esp_task_wdt_add(NULL)");
 
     // -> log ready
-    ESP_LOGI(TAG, "bicopter-fc ready: 6 tasks running (SafetyTask, SensorTask, EstimatorTask, "
-                  "FlightControlTask, RadioTask, TelemetryTask)");
+#if CONFIG_BICOPTER_OPERATING_MODE_SIMULATION
+    ESP_LOGI(TAG, "operating mode: SIMULATION (see docs/bench_test.md)");
+#elif CONFIG_BICOPTER_OPERATING_MODE_HARDWARE_TEST
+    ESP_LOGI(TAG, "operating mode: HARDWARE_TEST (see docs/bench_test.md)");
+#elif CONFIG_BICOPTER_OPERATING_MODE_FLIGHT
+    ESP_LOGI(TAG, "operating mode: FLIGHT (see docs/bench_test.md)");
+#endif
+    ESP_LOGI(TAG, "bicopter-fc ready: 7 tasks running (SafetyTask, SensorTask, EstimatorTask, "
+                  "FlightControlTask, RadioTask, TelemetryTask, BenchTestTask)");
 
     // app_main() returning deletes the main task (standard ESP-IDF behavior) - everything from
-    // here on runs in the six tasks created above.
+    // here on runs in the seven tasks created above.
 }

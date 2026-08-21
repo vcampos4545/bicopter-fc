@@ -236,7 +236,39 @@ check, since `FlightControlTask` still calls no real allocator. `idf.py build` s
 `tests/actuator_command_check_test.c`, and `tests/battery_convert_test.c` cover the full
 transition table, every arming precondition, every failsafe condition, and the battery conversion
 math. See [docs/safety.md](docs/safety.md) for the full write-up, including the complete
-transition table and the honest wired-vs-not-yet-wired breakdown.
+transition table and the honest wired-vs-not-yet-wired breakdown. As of Milestone 18 (the last
+purely-software milestone — Milestone 17's hardware integration requires physical hardware in hand
+and is not dispatched until it exists, see TODO.md),
+`firmware/main/Kconfig.projbuild` adds a `BICOPTER_OPERATING_MODE` Kconfig choice
+(`SIMULATION`/`HARDWARE_TEST`/
+`FLIGHT`) resolved entirely at compile time — chosen over a boot-time-latched value specifically
+so no runtime signal (a corrupted NVS read, a miswired strap, a stray radio packet) can ever move
+the running vehicle into `HARDWARE_TEST`'s relaxed motor-test path, see docs/bench_test.md's "Why
+build-time, not boot-time-latched" section — plus a separate `CONFIG_BICOPTER_BENCH_TEST_MOTORS_
+DISABLED` option that makes `firmware/components/actuators/src/pwm_esc_output.c` — the only file
+that ever calls ESP-IDF's LEDC PWM API for a motor — `#if`-exclude every one of those calls
+entirely, a guarantee verified this milestone by `nm`-inspecting the compiled object (zero `ledc_*`
+references under BENCH_TEST, all four otherwise), not just documented. A new `firmware/components/
+bench_test/` component (a minimal custom UART command parser, not ESP-IDF's `esp_console`,
+specifically so the safety-relevant parsing/confirmation logic stays plain, ESP-IDF-free, and
+host-tested per this file's driver-testing convention) backs a new seventh FreeRTOS task,
+`BenchTestTask` (`firmware/main/bench_test_task.c`, lowest priority, deliberately not
+watchdog-registered — it is an interactive diagnostic tool, not part of the real-time
+flight-control path) with four independently-usable commands: continuous sensor/radio-command
+streaming (read-only, work regardless of mode or arming state), a direct single-servo angle
+command (bypasses the control loop, refused in a `FLIGHT` build), and a single-motor `esc_test`
+reachable only in a `HARDWARE_TEST` build, gated behind a literal exact `CONFIRM` token distinct
+from the normal arm/throttle path, hard-clamped to a low configured throttle, and auto-returning to
+idle after a configured duration regardless of whether a second command ever arrives. This
+milestone also finally calls `actuators_init_safe()` from `main()` — the call site AGENTS.md's
+Milestone 5/6 entries already documented as the natural one — behind a new
+`CONFIG_BICOPTER_ACTUATORS_ENABLED` gate (default off, same "no board chosen yet" pattern every
+other optional-hardware option here uses), publishing the result via a new, mutex-free
+`firmware/main/actuators_state.h`/`.c` (mutex-free because it is written once at boot, before any
+task that reads it starts, and never reassigned after — unlike `safety_state.h`/`radio_state.h`,
+which are both written every cycle). See [docs/bench_test.md](docs/bench_test.md) for the full
+writeup, including the recommended real-hardware bring-up sequence Milestone 17 is meant to run
+against.
 See [TODO.md](TODO.md) for the full milestone sequence and current status.
 
 ## CMake: guard a shared subdirectory before add_subdirectory-ing it

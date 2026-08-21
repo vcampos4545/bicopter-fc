@@ -39,6 +39,12 @@ extern "C" {
 #define FLIGHT_CONTROL_TASK_PRIORITY (tskIDLE_PRIORITY + 7)
 #define RADIO_TASK_PRIORITY          (tskIDLE_PRIORITY + 5)
 #define TELEMETRY_TASK_PRIORITY      (tskIDLE_PRIORITY + 3)
+// BenchTestTask (Milestone 18, see ../../docs/bench_test.md): lowest priority of all seven tasks
+// and deliberately not part of docs/architecture.md's original six-task table - it is an
+// interactive bench-bringup diagnostic tool, not part of the real-time flight-control path, and
+// must never win CPU contention against anything that is (same reasoning task_config.h already
+// gives for ranking RadioTask/TelemetryTask low). Not watchdog-registered - see bench_test_task.h.
+#define BENCH_TEST_TASK_PRIORITY     (tskIDLE_PRIORITY + 2)
 
 // Periods, in milliseconds, chosen from docs/architecture.md's Milestone-1 ranges. This requires
 // CONFIG_FREERTOS_HZ raised to 1000 (see ../sdkconfig.defaults) - at the ESP-IDF stock 100Hz/10ms
@@ -63,6 +69,11 @@ extern "C" {
 // 2ms/cycle = 20ms = 50Hz baro read rate, matching the ~50Hz figure docs/architecture.md's task
 // table already names for barometer reads.
 #define SENSOR_TASK_BARO_DECIMATION   10
+
+// BenchTestTask's console-poll/streaming-print cadence (Milestone 18) - not a hard real-time
+// deadline, just how often it drains the console UART and, while streaming is active, reprints a
+// sensor/radio line. 100ms/10Hz is comfortably human-readable without flooding a terminal.
+#define BENCH_TEST_TASK_PERIOD_MS    100
 
 #ifdef __cplusplus
 }
