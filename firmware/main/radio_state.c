@@ -1,31 +1,29 @@
-#include "safety_state.h"
+#include "radio_state.h"
+
+#include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
 static SemaphoreHandle_t s_mutex;
-static safety_state_t s_state;
+static radio_state_t s_state;
 
-esp_err_t safety_state_init(void)
+esp_err_t radio_state_init(void)
 {
-    s_state.armed = false;
-    s_state.mode = FLIGHT_MODE_BOOT;
-    s_state.last_failsafe_reason = FAILSAFE_REASON_NONE;
-    s_state.arming_blocking_mask = 0;
-    s_state.checked_at_us = 0;
+    memset(&s_state, 0, sizeof(s_state));
 
     s_mutex = xSemaphoreCreateMutex();
     return (s_mutex != NULL) ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
-void safety_state_set(const safety_state_t *state)
+void radio_state_set(const radio_state_t *state)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_state = *state;
     xSemaphoreGive(s_mutex);
 }
 
-void safety_state_get(safety_state_t *out_state)
+void radio_state_get(radio_state_t *out_state)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     *out_state = s_state;

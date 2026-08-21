@@ -38,9 +38,12 @@ Full rationale: [docs/architecture.md](docs/architecture.md).
 ## Hardware abstraction layer (HAL)
 
 `flight_core` never calls ESP-IDF APIs or touches a specific sensor/actuator part. It only sees
-small poll-style interfaces — `Imu`, `Barometer`, `MotorOutput`, `ServoOutput`, `Radio`, and a
-battery monitor (exact shape still TBD; Milestone 5 landed `MotorOutput`/`ServoOutput` but did not
-address battery sensing — that remains open for whichever milestone first needs it). `firmware/`
+small poll-style interfaces — `Imu`, `Barometer`, `MotorOutput`, `ServoOutput`, `Radio`, and (as of
+Milestone 16) a battery monitor: `firmware/components/power/`'s `battery_read()`
+(handle-plus-functions, the same shape as `mpu6050_read()`/`bmp581_read()` rather than the
+ops-vtable shape `Radio`/`MotorOutput` use), returning a `battery_reading_t` with voltage, percent,
+optional current, and LOW/CRITICAL threshold flags — no specific voltage-divider ratio or cell
+count assumed (see docs/hardware.md). `firmware/`
 implements each against real ESP32 peripherals; `simulator/` implements each against a physics
 model. Both link the same `flight_core` sources unmodified.
 
@@ -195,6 +198,45 @@ sequence-gap figure). No `radio.h` changes were needed. No physical CRSF receive
 this environment — `idf.py build` was confirmed to succeed with
 `CONFIG_BICOPTER_CRSF_RADIO_ENABLED` off (default) and on, and to fail loudly (not silently pick a
 backend) with both radio options on; `tests/crsf_frame_test.c` (140 checks) covers the pure logic.
+As of Milestone 16, `firmware/components/safety/` is real: `flight_mode.c/.h` (the full
+`BOOT`/`DISARMED`/`ARMED`/`STABILIZE`/`ALTITUDE_HOLD`/`FAILSAFE`/`ERROR` state machine),
+`arming.c/.h` (every documented arming precondition, all-or-nothing, plus a blocking-mask for
+diagnostics), `failsafe.c/.h` (every required condition except task-watchdog failure, each with a
+configurable per-condition response defaulting to a safe motor shutdown/disarm), and
+`actuator_command_check.c/.h` (defense-in-depth command validation) — all plain, ESP-IDF-free C,
+the same driver-testing-convention split every other component here follows, chosen specifically
+so `firmware/main/safety_task.c` (also C) can call it directly without needing the same
+not-yet-built C++/ESP-IDF-component bridge that has left `flight_core`'s estimator/controller
+stack unwired into firmware since Milestones 8/10-13; `flight_core/safety/` stays an empty
+scaffold, same status `flight_core/dynamics/` has held since Milestone 1 — see
+[docs/safety.md](docs/safety.md)'s "Why firmware/components/safety/, not flight_core/safety/"
+section for the full reasoning, since this is a deliberate exception to "safety/control logic
+lives in flight_core" worth understanding before a later milestone touches either directory.
+`firmware/main/safety_task.c` replaces Milestone 6's always-disarmed stub with this real logic,
+wired into its existing 100Hz loop; `safety_state_t` (`firmware/main/safety_state.h`) is extended
+in place to carry a real `flight_mode_t` plus diagnostics rather than just a placeholder `armed`
+bool, and a new `radio_state.h`/`.c` (same mutex-protected-struct shape as `safety_state.h`, for
+the same torn-read reason) lets `RadioTask` publish its latest decoded command/health for
+`SafetyTask` to consume — the first live cross-task consumer of `RadioTask`'s output, though still
+a narrower thing than the general RadioTask -> FlightControlTask setpoint plumbing this file's
+Milestone 14 entry already notes is unstarted. `firmware/components/power/` is also new: ADC-based
+battery voltage (and optional current) monitoring behind `CONFIG_BICOPTER_BATTERY_ENABLED`
+(default off, no battery/divider hardware chosen yet), using ESP32's line-fitting ADC calibration
+scheme (its only supported one — the newer curve-fitting scheme this target doesn't have). Real
+live-firmware-data wiring this milestone: IMU/barometer validity and raw gyro rate (`SafetyTask`
+peeks `SensorTask`'s sample queue), radio arm command/link health (via `radio_state.h`), and
+battery data when enabled. Honestly not wired: estimator validity and attitude — no estimator runs
+in firmware yet, so `estimator_valid` is hardcoded false in `safety_task.c`, never faked true,
+meaning arming is structurally blocked in today's firmware regardless of hardware state (the
+correct behavior for a genuinely incomplete wiring, not a bug); and the invalid-actuator-command
+check, since `FlightControlTask` still calls no real allocator. `idf.py build` succeeds with
+`CONFIG_BICOPTER_BATTERY_ENABLED`/`CONFIG_BICOPTER_BATTERY_CURRENT_SENSE_ENABLED`/
+`CONFIG_BICOPTER_ALTITUDE_HOLD_ENABLED` each off (default) and on; 185 new passing checks across
+`tests/flight_mode_test.c`, `tests/arming_test.c`, `tests/failsafe_test.c`,
+`tests/actuator_command_check_test.c`, and `tests/battery_convert_test.c` cover the full
+transition table, every arming precondition, every failsafe condition, and the battery conversion
+math. See [docs/safety.md](docs/safety.md) for the full write-up, including the complete
+transition table and the honest wired-vs-not-yet-wired breakdown.
 See [TODO.md](TODO.md) for the full milestone sequence and current status.
 
 ## CMake: guard a shared subdirectory before add_subdirectory-ing it

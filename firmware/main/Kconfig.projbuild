@@ -227,3 +227,147 @@ menu "Bicopter radio (CRSF RC receiver)"
         default 992
 
 endmenu
+
+menu "Bicopter battery monitoring"
+
+    config BICOPTER_BATTERY_ENABLED
+        bool "Battery voltage-divider (and optional current-sense) ADC is wired to this board"
+        default n
+        help
+            No battery/voltage-divider hardware has been chosen or wired to this board yet (see
+            docs/hardware.md's "Battery cell count / voltage-divider and current-sense scaling:
+            TBD" entry). Leave disabled until a divider is built and the ADC channel/ratio below
+            are set to match it - SafetyTask (firmware/main/safety_task.c) gracefully skips real
+            ADC init/reads while this is disabled. The arming precondition battery_ok fails closed
+            (reports false, blocking arming) while this is disabled, same as imu_valid/
+            radio_link_alive do when their own hardware/link is absent - a missing signal is never
+            treated as "ok," see docs/safety.md.
+
+    config BICOPTER_BATTERY_ADC_UNIT
+        int "ADC unit (1 or 2)"
+        depends on BICOPTER_BATTERY_ENABLED
+        default 1
+        help
+            ESP32 has two SAR ADC units; ADC2 is shared with Wi-Fi and unusable while Wi-Fi is
+            active (relevant if ESP-NOW radio is also enabled - see docs/radio.md). Unit 1 is the
+            safer default for a board that may also use ESP-NOW.
+
+    config BICOPTER_BATTERY_VOLTAGE_ADC_CHANNEL
+        int "Voltage-sense ADC channel"
+        depends on BICOPTER_BATTERY_ENABLED
+        default 0
+        help
+            Placeholder default, not verified against any actual board wiring - see
+            docs/hardware.md.
+
+    config BICOPTER_BATTERY_ADC_ATTENUATION
+        int "ADC attenuation (0=0dB, 1=2.5dB, 2=6dB, 3=12dB)"
+        depends on BICOPTER_BATTERY_ENABLED
+        default 3
+        help
+            12dB attenuation gives the ESP32's widest input range (~0-3.1V), the usual choice
+            downstream of a voltage divider sized to keep Vadc within that range at the pack's
+            maximum voltage.
+
+    config BICOPTER_BATTERY_VOLTAGE_DIVIDER_RATIO_MILLI
+        int "Voltage-divider ratio (Vbat/Vadc), x1000"
+        depends on BICOPTER_BATTERY_ENABLED
+        default 11000
+        help
+            Placeholder (11.000:1), not derived from any chosen resistor pair - see
+            docs/hardware.md's TBD entry and docs/safety.md. Vbat = Vadc * (this value / 1000).
+            Set to match the real divider once built: ratio = (R1+R2)/R2 for a divider with R1
+            from Vbat to the ADC pin and R2 from the ADC pin to ground.
+
+    config BICOPTER_BATTERY_CELL_COUNT
+        int "Battery cell count (S)"
+        depends on BICOPTER_BATTERY_ENABLED
+        default 3
+        help
+            Scales the per-cell LOW/CRITICAL thresholds below and the default percentage curve
+            (battery_default_single_cell_curve() in battery_convert.c) to the configured pack.
+
+    config BICOPTER_BATTERY_LOW_VOLTAGE_PER_CELL_MV
+        int "LOW_BATTERY threshold, millivolts per cell"
+        depends on BICOPTER_BATTERY_ENABLED
+        default 3500
+        help
+            A common conservative LiPo per-cell "getting low" rest-voltage figure - not derived
+            from any specific cell's datasheet. See docs/safety.md for the full battery-monitoring
+            caveat. Multiplied by BICOPTER_BATTERY_CELL_COUNT to get the pack-level threshold.
+
+    config BICOPTER_BATTERY_CRITICAL_VOLTAGE_PER_CELL_MV
+        int "CRITICAL_BATTERY threshold, millivolts per cell"
+        depends on BICOPTER_BATTERY_ENABLED
+        default 3300
+        help
+            A common conservative LiPo per-cell "must land now" rest-voltage figure - not derived
+            from any specific cell's datasheet, and does not account for load-sag (see
+            docs/safety.md). Multiplied by BICOPTER_BATTERY_CELL_COUNT to get the pack-level
+            threshold.
+
+    config BICOPTER_BATTERY_CURRENT_SENSE_ENABLED
+        bool "Current-sense ADC channel is also wired (optional - see docs/safety.md)"
+        depends on BICOPTER_BATTERY_ENABLED
+        default n
+        help
+            Voltage monitoring is this milestone's priority; current sensing is supported (a
+            second ADC channel through the same linear-scaling conversion path) but not required -
+            see AGENTS.md/docs/safety.md. No current-sense shunt/hall-sensor hardware is chosen
+            yet.
+
+    config BICOPTER_BATTERY_CURRENT_ADC_CHANNEL
+        int "Current-sense ADC channel"
+        depends on BICOPTER_BATTERY_CURRENT_SENSE_ENABLED
+        default 1
+
+    config BICOPTER_BATTERY_CURRENT_SCALE_MILLIAMPS_PER_VOLT
+        int "Current-sense scale, milliamps per volt at the ADC pin"
+        depends on BICOPTER_BATTERY_CURRENT_SENSE_ENABLED
+        default 40000
+        help
+            Placeholder (40A/V), not derived from any chosen shunt/hall-sensor part - depends
+            entirely on the current-sense hardware eventually chosen (see docs/hardware.md).
+
+endmenu
+
+menu "Bicopter safety / failsafe thresholds"
+
+    config BICOPTER_SAFETY_MAX_TILT_ANGLE_DEG
+        int "Maximum tilt-from-level before EXCESSIVE_ATTITUDE failsafe triggers (degrees, 0=disabled)"
+        default 60
+        help
+            Placeholder, not tuned against any real flight envelope (no hardware exists yet - see
+            docs/hardware.md). See docs/safety.md. This check cannot currently fire in firmware -
+            no estimator runs in firmware yet to supply a real tilt angle (see docs/safety.md's
+            "What's wired to live data, and what isn't yet" section) - but is implemented, real,
+            and host-tested (failsafe.c / tests/failsafe_test.c), ready for when that wiring lands.
+
+    config BICOPTER_SAFETY_MAX_ANGULAR_RATE_DPS
+        int "Maximum body angular rate before EXCESSIVE_ANGULAR_VELOCITY failsafe triggers (deg/s, 0=disabled)"
+        default 500
+        help
+            Placeholder, not tuned against any real flight envelope. Unlike the tilt-angle check
+            above, this one DOES have a real firmware signal source: SafetyTask peeks the raw gyro
+            rate from SensorTask's sample queue (see docs/safety.md) - no estimator dependency.
+
+    config BICOPTER_SAFETY_STATIONARY_MAX_ANGULAR_RATE_DPS
+        int "Maximum body angular rate to consider the vehicle stationary for arming (deg/s, 0=disabled)"
+        default 20
+        help
+            Part of the arming precondition set (arming.h's arming_is_stationary()) - the design
+            brief's explicit "check the vehicle is stationary during arming" requirement. Real
+            firmware signal source: the same raw gyro peek as the angular-rate failsafe above.
+
+    config BICOPTER_ALTITUDE_HOLD_ENABLED
+        bool "Enable the experimental ALTITUDE_HOLD flight mode"
+        default n
+        help
+            ALTITUDE_HOLD is explicitly experimental and disabled/unreachable by default per this
+            project's design brief - no barometer-based altitude/vertical-velocity estimator
+            exists yet (docs/estimation.md notes this is deferred), so ALTITUDE_HOLD has no real
+            control loop behind it even when this gate is enabled. See docs/safety.md. Requesting
+            ALTITUDE_HOLD from the radio while this is off is a documented no-op in
+            flight_mode.c, not an error.
+
+endmenu

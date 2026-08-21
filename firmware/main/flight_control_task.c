@@ -1,7 +1,12 @@
 // FlightControlTask - Milestone 6 scaffolding only. No attitude/rate control math or actuator
-// writes exist yet (milestones 10-12 add those); this task's stub body reads the mutex-protected
-// safety_state_t (armed/disarmed - see safety_state.h) and drains the lightweight "safety state
-// changed" notification SafetyTask sends after each of its own cycles, logging both, decimated.
+// writes exist yet (milestones 10-12 built that stack in flight_core/simulator, but wiring it into
+// firmware's FlightControlTask is explicitly out of scope through Milestone 16 - see AGENTS.md);
+// this task's stub body reads the mutex-protected safety_state_t (now a real flight_mode_t as of
+// Milestone 16, not just a placeholder armed bool - see safety_state.h) and drains the lightweight
+// "safety state changed" notification SafetyTask sends after each of its own cycles, logging both,
+// decimated. Once real control/allocation wiring lands, this is also the natural place to gate
+// actuator output on `safety.armed` (already false whenever SafetyTask reports FAILSAFE/DISARMED/
+// BOOT/ERROR).
 //
 // Target rate: 250Hz (FLIGHT_CONTROL_TASK_PERIOD_MS = 4, see task_config.h), the low end of
 // docs/architecture.md's documented 250-500Hz range - trailing SensorTask/EstimatorTask
@@ -13,6 +18,7 @@
 #include "freertos/task.h"
 
 #include "flight_control_task.h"
+#include "flight_mode.h"
 #include "safety_state.h"
 #include "task_config.h"
 
@@ -40,8 +46,10 @@ void flight_control_task(void *pvParameters)
 
         if ((cycle % 250) == 1) { // ~once/second at 250Hz
             ESP_LOGI(TAG,
-                     "cycle=%lu armed=%d safety_pings=%lu (no control math yet - milestones 10-12)",
-                     (unsigned long)cycle, safety.armed, (unsigned long)pending_safety_pings);
+                     "cycle=%lu mode=%s armed=%d safety_pings=%lu (no control math yet - "
+                     "milestones 10-12)",
+                     (unsigned long)cycle, flight_mode_name(safety.mode), safety.armed,
+                     (unsigned long)pending_safety_pings);
         }
 
         esp_task_wdt_reset();

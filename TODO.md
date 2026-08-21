@@ -381,11 +381,55 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   docs/radio.md's full verified-vs-deferred breakdown and calibration procedure for whoever has
   real hardware.
 
-- [ ] **16. Safety / failsafes**
+- [x] **16. Safety / failsafes**
   Deliverable: `flight_core/safety/` + `firmware/components/safety/` — arming logic, signal-loss
   and sensor-fault failsafes, battery-voltage cutoffs, and the SafetyTask behavior.
   Done when: each failsafe condition (radio loss, sensor fault, low battery, disarm) is
   exercised in the simulator and/or on the bench and produces the correct safe response.
+  Done via: `firmware/components/safety/` (`flight_mode.c/.h`, `arming.c/.h`, `failsafe.c/.h`,
+  `actuator_command_check.c/.h`) — plain, ESP-IDF-free C, same driver-testing-convention split as
+  every other sensor/actuator/radio driver, so `firmware/main/safety_task.c` (also C) calls it
+  directly with no C++/ESP-IDF-component bridge to build; `flight_core/safety/` stays an empty
+  scaffold (same status `flight_core/dynamics/` has held since Milestone 1) — see
+  [docs/safety.md](docs/safety.md)'s "Why firmware/components/safety/, not flight_core/safety/"
+  section for the full reasoning. The full `BOOT`/`DISARMED`/`ARMED`/`STABILIZE`/`ALTITUDE_HOLD`
+  (Kconfig-gated off by default)/`FAILSAFE`/`ERROR` state machine is real and wired into
+  `SafetyTask`'s existing 100Hz loop, replacing Milestone 6's always-disarmed stub — `FAILSAFE` is
+  latching (only clears via explicit disarm, never auto-resumes flight) and `ERROR` is reachable
+  only from `BOOT`/`DISARMED` (in-flight faults always route through `FAILSAFE` instead, a single
+  well-tested in-flight fault path, not two). Arming requires every documented precondition (valid
+  IMU/estimator, live radio + explicit arm command, battery above LOW, no critical errors, and the
+  design brief's explicit stationary-during-arming check) with no partial-credit path — the system
+  never auto-arms. Every required failsafe condition except task-watchdog failure (not
+  representable at the application level — see docs/safety.md) is detected with a configurable,
+  per-condition response defaulting to a safe motor shutdown/disarm (never an attempted autonomous
+  landing, per the design brief), with `FAILSAFE_RESPONSE_LANDING` left as a documented,
+  unimplemented extension point; radio loss specifically fires deterministically off
+  `radio_health_t.link_alive` alone. Battery monitoring is new in
+  `firmware/components/power/` — ADC-based (ESP32's line-fitting calibration scheme, its only
+  supported scheme), a configurable voltage-divider ratio (no divider chosen yet — see
+  docs/hardware.md), an explicitly-approximate voltage-to-percentage curve, configurable LOW/
+  CRITICAL thresholds, and optional current sensing (supported, not required, per this milestone's
+  brief) — gated behind `CONFIG_BICOPTER_BATTERY_ENABLED` (default off, no battery hardware chosen
+  yet), failing closed (blocks arming) while disabled. Real live-data wiring this milestone: IMU/
+  barometer validity and raw gyro rate (`SafetyTask` peeks `SensorTask`'s sample queue), radio arm
+  command + link health (`RadioTask` now publishes via the new `radio_state.h`, the first live
+  cross-task consumer of its decoded output), and battery voltage/percent/thresholds when enabled.
+  Honestly not wired: estimator validity and attitude, since no estimator runs in firmware yet
+  (`EstimatorTask` still only logs/discards — same open item as Milestones 8/10-13) —
+  `estimator_valid` is hardcoded false, never faked true, so arming is structurally blocked in
+  today's firmware regardless of hardware state; and the invalid-actuator-command check, since
+  `FlightControlTask` calls no real allocator yet. See docs/safety.md's "What's wired to live
+  data, and what isn't yet" section for the full breakdown. `idf.py build` succeeds with
+  `CONFIG_BICOPTER_BATTERY_ENABLED`/`CONFIG_BICOPTER_BATTERY_CURRENT_SENSE_ENABLED`/
+  `CONFIG_BICOPTER_ALTITUDE_HOLD_ENABLED` each off (default) and on. 185 new passing host-side
+  checks across `tests/flight_mode_test.c` (54), `tests/arming_test.c` (27),
+  `tests/failsafe_test.c` (37), `tests/actuator_command_check_test.c` (12), and
+  `tests/battery_convert_test.c` (55) cover the full transition table (valid and invalid
+  transitions), every arming precondition individually blocking arming plus the all-clear case,
+  every failsafe condition firing and not-firing, and the battery conversion math. No physical
+  IMU/radio/battery hardware was available in this environment to exercise a real end-to-end arm/
+  fly/failsafe cycle — see docs/safety.md for the full verified-vs-deferred breakdown.
 
 - [ ] **17. Hardware integration**
   Deliverable: all of the above assembled and flown/tested on the finalized physical vehicle,

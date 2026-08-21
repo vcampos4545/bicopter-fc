@@ -17,6 +17,13 @@
 //
 // Target rate: 50Hz (RADIO_TASK_PERIOD_MS = 20, see task_config.h), mid of docs/architecture.md's
 // documented 20-100Hz range (protocol-dependent - ESP-NOW vs. RC-receiver frame rate, still TBD).
+//
+// Milestone 16 adds one line of real wiring: every cycle, the latest decoded command and link
+// health are published via radio_state_set() (radio_state.h) so SafetyTask can evaluate real
+// arming/failsafe preconditions against them - the first live consumer of this task's output by
+// another task (see AGENTS.md's Milestone 14 note that RadioTask "does not yet deposit setpoints
+// into FlightControlTask"; that larger setpoint-plumbing item is still unstarted, this is a
+// narrower, safety-only publish).
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
@@ -24,6 +31,7 @@
 
 #include "sdkconfig.h"
 
+#include "radio_state.h"
 #include "radio_task.h"
 #include "task_config.h"
 
@@ -157,6 +165,24 @@ void radio_task(void *pvParameters)
 #endif
         }
 #endif
+
+        // Milestone 16: publish the latest command/health for SafetyTask's real arming/failsafe
+        // evaluation (radio_state.h) - every cycle, not decimated, so SafetyTask (100Hz) never
+        // reads a value staler than one RadioTask period (20ms).
+        {
+            radio_state_t pub = {0};
+#if RADIO_TRANSPORT_ENABLED
+            pub.available = radio_ready;
+            if (radio_ready) {
+                pub.has_command = radio_has_command(&radio);
+                if (pub.has_command) {
+                    radio_get_command(&radio, &pub.command);
+                }
+                radio_get_health(&radio, &pub.health);
+            }
+#endif
+            radio_state_set(&pub);
+        }
 
         if ((cycle % 50) == 1) { // ~once/second at 50Hz
 #if RADIO_TRANSPORT_ENABLED
