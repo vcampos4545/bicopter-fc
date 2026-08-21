@@ -49,3 +49,45 @@ menu "Bicopter sensor hardware"
             interrupt-fed queue. Set to a real GPIO once the MPU6050's INT pin is wired to one.
 
 endmenu
+
+menu "Bicopter radio (ESP-NOW)"
+
+    config BICOPTER_RADIO_ENABLED
+        bool "ESP-NOW radio link is paired with a ground-station peer"
+        default n
+        help
+            No ground-station peer has been paired or tested in this environment yet (no physical
+            hardware - see docs/radio.md). Leave disabled until a peer MAC is configured below and
+            two real ESP32 boards are available to pair. RadioTask (firmware/main/radio_task.c)
+            gracefully skips Wi-Fi/ESP-NOW init while this is disabled, logging a stub cadence
+            instead of bringing up a radio link that has nothing to talk to.
+
+    config BICOPTER_RADIO_PEER_MAC
+        string "Paired peer MAC address (AA:BB:CC:DD:EE:FF)"
+        depends on BICOPTER_RADIO_ENABLED
+        default "FF:FF:FF:FF:FF:FF"
+        help
+            Placeholder broadcast address - replace with the ground-station peer's real MAC once
+            one is chosen and paired. See docs/radio.md's pairing procedure.
+
+    config BICOPTER_RADIO_WIFI_CHANNEL
+        int "Wi-Fi channel"
+        depends on BICOPTER_RADIO_ENABLED
+        default 1
+        help
+            Both peers must be set to the same fixed channel - ESP-NOW rides on the Wi-Fi radio
+            without an actual AP association/channel negotiation. Valid range 1-13
+            (region-dependent).
+
+    config BICOPTER_RADIO_COMMAND_TIMEOUT_MS
+        int "Command staleness timeout (ms)"
+        depends on BICOPTER_RADIO_ENABLED
+        default 500
+        help
+            has_command()/get_health().link_alive (firmware/components/radio/include/radio.h)
+            report the link lost if no valid command packet is received within this window. 500ms
+            is a placeholder, 10x RadioTask's own 20ms/50Hz cycle - see docs/radio.md. The actual
+            failsafe *behavior* once the link is considered lost is Milestone 16's job, not this
+            option's.
+
+endmenu

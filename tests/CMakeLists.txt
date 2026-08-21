@@ -14,6 +14,13 @@
 # add_subdirectory rather than compiling its sources a second time. Milestone 9
 # (simulator/physics/) follows the same pattern via ../simulator/physics/CMakeLists.txt's
 # `bicopter_physics` target, which itself depends on `flight_core`.
+#
+# Milestone 14 (firmware/components/radio/) follows the sensors/actuators pattern again:
+# radio_packet.c (wire-format serialize/parse, sequence staleness/reordering, packet-loss
+# tracking) has zero ESP-IDF dependency by design, so radio_packet_test.c compiles it directly the
+# same way mpu6050_convert_test.c does. The actual ESP-NOW Wi-Fi calls
+# (firmware/components/radio/src/esp_now_radio.c) are hardware-dependent and not host-testable --
+# see docs/radio.md.
 
 cmake_minimum_required(VERSION 3.16)
 project(bicopter_fc_tests C CXX)
@@ -22,6 +29,7 @@ enable_testing()
 
 set(SENSORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/sensors)
 set(ACTUATORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/actuators)
+set(RADIO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/radio)
 set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/main)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../flight_core flight_core-build)
@@ -83,6 +91,15 @@ add_executable(task_util_test
 target_include_directories(task_util_test PRIVATE ${MAIN_DIR})
 
 add_test(NAME task_util_test COMMAND task_util_test)
+
+add_executable(radio_packet_test
+    radio_packet_test.c
+    ${RADIO_DIR}/src/radio_packet.c
+)
+target_include_directories(radio_packet_test PRIVATE ${RADIO_DIR}/include)
+target_link_libraries(radio_packet_test m)
+
+add_test(NAME radio_packet_test COMMAND radio_packet_test)
 
 add_executable(vec3_test vec3_test.cpp)
 target_link_libraries(vec3_test flight_core)

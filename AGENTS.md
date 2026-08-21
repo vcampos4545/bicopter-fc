@@ -152,8 +152,27 @@ piece of work from closing the loop in simulation. `docs/control.md` covers the
 [docs/control_allocation.md](docs/control_allocation.md) for `ControlAllocator`.
 `docs/estimation.md` covers attitude estimation as of Milestone 8 and its Milestone 13 update on
 hover observability; barometer-based altitude/vertical-velocity estimation remains deferred to a
-later milestone (noted in docs/estimation.md, not silently missing). See [TODO.md](TODO.md) for
-the full milestone sequence and current status.
+later milestone (noted in docs/estimation.md, not silently missing). As of Milestone 14,
+`firmware/components/radio/` is real: `include/radio.h` is a protocol-independent `Radio` HAL
+interface (`has_command`/`get_command`/`get_health`/`deinit`, the same ops-vtable-plus-ctx shape as
+`motor_output_t`) so Milestone 15's RC-receiver implementation is a second backend behind it, not a
+rewrite; `esp_now_radio.c/.h` is the first concrete implementation (Wi-Fi/ESP-NOW init/pairing,
+gated behind `CONFIG_BICOPTER_RADIO_ENABLED`, default off — no ground-station peer paired yet,
+same pattern as `CONFIG_BICOPTER_SENSORS_ENABLED`); `radio_packet.c/.h` holds the pure
+wire-format/sequence-staleness/packet-loss logic, ESP-IDF-free by design per this file's driver-
+testing convention. ESP-NOW's receive callback runs in the Wi-Fi driver's own task context (not an
+ISR, but still foreign context this driver must not block or do real work in) and does only a
+bounds-checked, non-blocking queue post; all real parsing/validation/sequence-tracking happens in
+`esp_now_radio_process_pending()`, called once per cycle from Milestone 6's existing `RadioTask`
+(`firmware/main/radio_task.c`) rather than a new task — see [docs/radio.md](docs/radio.md) for the
+full callback/task-context writeup, packet format, and pairing procedure. Radio-loss is exposed
+through `radio_health_t.link_alive` (a configurable staleness timeout); Milestone 16 still owns
+deciding what to *do* about it. No physical ESP32 pair was available in this environment, so real
+over-the-air packet delivery/latency/loss/RSSI remain unverified — `idf.py build` was confirmed to
+succeed with `CONFIG_BICOPTER_RADIO_ENABLED` both off and on (a real build against ESP-IDF's
+`esp_wifi`/`esp_now` libraries), and every piece of pure packet logic has real host-side tests
+(`tests/radio_packet_test.c`). See [TODO.md](TODO.md) for the full milestone sequence and current
+status.
 
 ## CMake: guard a shared subdirectory before add_subdirectory-ing it
 
