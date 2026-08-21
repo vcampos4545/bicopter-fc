@@ -2,10 +2,10 @@
 
 ## Status
 
-Milestone 10 (this document's first real content) implements the generic `Pid` building block
-and the `RateController` it's used to build, both in `flight_core/control/`. Milestone 11 (the
-attitude controller, attitude error -> rate setpoint) and Milestone 12 (control allocation, body
-torque/thrust -> per-motor throttle and per-servo tilt angle) remain unimplemented — see
+Milestone 10 implements the generic `Pid` building block and the `RateController` it's used to
+build. Milestone 11 implements `AttitudeController`, the outer (attitude) loop that converts an
+attitude error into a rate setpoint for `RateController`. Milestone 12 (control allocation, body
+torque/thrust -> per-motor throttle and per-servo tilt angle) remains unimplemented — see
 [TODO.md](../TODO.md).
 
 All control quantities use the body-frame and units convention from [README.md](../README.md):
@@ -130,4 +130,150 @@ This does not mean the gains are hardcoded: `PidConfig` and `RateControllerConfi
 publicly-settable config structs. Any caller (a test, the simulator, eventually firmware) supplies
 its own values; the placeholder defaults exist only so `RateController()`'s default constructor
 produces something usable for tests today, not as an assertion that these numbers belong on a real
-or simulated vehicle.
+or simulated vehicle. `AttitudeControllerConfig` below follows the identical convention.
+
+## `AttitudeController`: the attitude (angle) control loop
+
+`flight_core/control/include/attitude_controller.h` / `src/attitude_controller.cpp`. The outer
+loop of the cascaded architecture `docs/architecture.md` described from Milestone 1 onward:
+
+```
+desired attitude (setpoint) --> AttitudeController --> desired body rate --> RateController --> desired body torque
+```
+
+`AttitudeController` consumes the desired and current attitude *quaternions* (not Euler angles —
+this repository's estimator and math library both work in quaternions, per
+[math.md](math.md)/[estimation.md](estimation.md), and quaternion error avoids Euler angles'
+gimbal-lock and ambiguous-sign issues near +-90 degree pitch) and produces a `Vec3` body rate,
+consumed unchanged by `RateController::update()`'s `desired_radps` argument. Unlike `Pid`/
+`RateController`, `AttitudeController` is **stateless** — a pure proportional map with no integral
+or derivative term, so there is no `reset()`.
+
+**Interface:**
+
+```cpp
+Vec3 update(const Quaternion& desired, const Quaternion& current,
+            const Vec3& feedforward_radps = Vec3::Zero()) const;
+```
+
+- `desired` / `current`: body-to-world (NED) attitude quaternions (see [math.md](math.md)).
+  `current` is meant to come directly from `flight_core/estimation/`'s
+  `AttitudeEstimate::orientation` (Milestone 8).
+- `feedforward_radps`: an optional additive desired body rate, `Vec3::Zero()` by default. Added
+  to the proportional correction before the rate limit is applied. No caller in this repository
+  supplies a nonzero value yet (there is no trajectory/rate-setpoint source ahead of this loop)
+  — it exists because a pure attitude-hold P-loop is a well-known special case of a more general
+  "track a moving attitude setpoint" loop, and adding the parameter now costs nothing while
+  saving an interface change later if Milestone 13+ ever wants to command a *rate* in addition to
+  an *attitude* (e.g. a coordinated turn or a scripted maneuver). If no real caller ever needs
+  this, a future milestone finding it genuinely unused should feel free to remove it rather than
+  treat this note as justification for keeping dead surface area.
+- Returns the desired body rate, rad/s, `x`/`y`/`z` = roll/pitch/yaw rate — same shape as
+  `RateController::update()`'s `desired_radps` parameter.
+
+### Quaternion error convention: `q_error = current.inverse() * desired`
+
+This is the single most important design decision in this milestone, because getting the
+multiplication order backwards produces a controller that still compiles, still looks plausible
+in isolated testing (it's still "proportional to the error," just with the wrong sign), and
+silently commands the vehicle to rotate *away* from its setpoint — the classic failure mode this
+kind of code is prone to.
+
+The convention is derived directly from [math.md](math.md)'s already-fixed body-rate integration
+rule, not invented independently: `Quaternion::integrate()` propagates orientation as
+`q(t+dt) = normalize(q(t) * dq(omega_body, dt))` — a small rotation `dq`, expressed in the
+*current* body frame's own axes, applied by right-multiplication. That is exactly what a gyro
+measurement (and, by the same token, a *commanded* body rate) means: "rotate about these axes, as
+currently oriented." Requiring the attitude controller's error quaternion to mean the same thing
+— i.e. requiring `current * q_error ~= desired` for a small step — and solving for `q_error` gives
+
+```
+q_error = current.inverse() * desired
+```
+
+directly (left-multiply both sides by `current.inverse()`). Using the opposite order,
+`desired.inverse() * current`, computes the rotation from `desired` to `current` instead of from
+`current` to `desired` — the negated vector part, and therefore the reversed control direction.
+Concretely, for `current = Identity` and `desired` a small +0.1 rad roll rotation,
+`current.inverse() * desired` has vector-part `x ~= +0.05` (correct: command a positive roll
+rate, roll toward the positive setpoint) while `desired.inverse() * current` has `x ~= -0.05`
+(wrong: commands rolling away from the setpoint). `tests/attitude_controller_test.cpp`'s
+single-axis tests pin down the correct sign numerically for all three axes, not just assert "some
+nonzero output."
+
+### Small-angle proportional law
+
+For a rotation of angle `theta` about a unit axis `n`, a quaternion's vector part is
+`sin(theta/2)*n`, which is `~= (theta/2)*n` for small `theta`. So `q_error`'s vector part already
+approximates half of the "rotation vector" `theta*n` (a vector whose direction is the axis to
+rotate about and whose magnitude is the angle to rotate by) that reduces the attitude error.
+Multiplying by 2 recovers that rotation vector, and applying a per-axis gain
+(`AttitudeControllerConfig::kp`, x=roll/y=pitch/z=yaw, same axis-independent style
+`RateController` already established) turns it into a commanded body rate:
+
+```
+commanded[i] = 2 * kp[i] * q_error.{x,y,z}[i]        (i = roll, pitch, yaw)
+```
+
+This is the standard "quaternion feedback" technique for rigid-body attitude control (see e.g.
+Wie, Weiss & Arapostathis, "Quaternion Feedback Regulator for Spacecraft Eigenaxis Rotations,"
+1989) in its simplified proportional-only form — no attempt is made here at the fuller
+Lyapunov-based nonlinear control law those references also derive, since Milestone 10's `RateController`
+already closes an inner loop around the rate this outer loop commands.
+
+**Small-angle accuracy.** The `theta/2 ~= sin(theta/2)` approximation is exact at `theta = 0` and
+degrades smoothly: at `theta = 90` degrees it under-reads the "ideal" linear response by about
+10%, and as `theta` approaches 180 degrees the vector part saturates at magnitude 1 instead of
+continuing to grow with `theta`, so the commanded rate's *direction* stays correct but its
+*magnitude* is heavily under-read relative to a hypothetical unbounded-linear law. This is judged
+acceptable rather than compensated for: a bicopter's controlled flight envelope is attitude
+stabilization near level flight, where attitude errors large enough for this nonlinearity to
+matter (many tens of degrees) already indicate a failure condition `SafetyTask` (Milestone 16)
+should be handling, not a regime this loop needs to be quantitatively accurate in.
+
+**180-degree handling.** Quaternions have a double cover: `q` and `-q` represent the identical
+physical rotation, but their vector parts have opposite sign. Before computing the vector part,
+`AttitudeController::update()` negates all four components of `q_error` whenever `q_error.w < 0`.
+This is the standard, minimal fix for that ambiguity — it guarantees the controller always picks
+the representation whose rotation angle is in `[0, 180]` degrees, i.e. always commands the
+*shorter* of the two directions that reach the same target attitude, rather than occasionally
+locking onto the long way around for an error that happens to exceed 180 degrees.
+`tests/attitude_controller_test.cpp`'s `test_shortest_path_beyond_180_degrees` exercises this
+directly: a nominal +200 degree roll error produces a *negative* commanded roll rate (the shorter
+-160 degree path), not a naive positive one.
+
+This is explicitly **not** a dedicated large-angle or inverted-flight recovery strategy. It does
+not resolve the genuine geometric singularity at exactly `theta = 180` degrees (at that exact
+angle, rotating by 180 degrees about the computed axis or its exact opposite reaches the same
+target attitude equally quickly — the "shorter" direction is genuinely ambiguous, not just
+numerically ill-conditioned), and no special casing exists for a fully inverted vehicle beyond
+what this one sign-fix already provides. This is judged acceptable for the same reason as the
+small-angle limitation above: this bicopter's flight envelope is attitude-holding near level
+flight, not aerobatics, so a dedicated recovery-from-full-inversion controller is out of scope
+rather than a gap.
+
+### Rate limit
+
+`AttitudeControllerConfig::rate_limit_radps` is a per-axis symmetric clamp (rad/s) applied to the
+total commanded rate (proportional correction + `feedforward_radps`) before it's returned — this
+is what stops a large attitude error from asking `RateController` for a rate the vehicle has no
+realistic hope of achieving or safely arresting. It's always applied (same "always-on saturation"
+philosophy as `Pid::output_min`/`output_max`), with a non-positive value on an axis treated as "no
+limit configured" for that axis rather than "clamp to zero" — this lets tests (and any future
+caller with a genuine reason not to limit) disable it explicitly rather than needing a separate
+enable flag. An independent per-axis clamp was chosen over clamping the combined rate vector's
+magnitude for the same reason `RateController` keeps its three axes independent: it keeps the
+config surface and the reasoning about any one axis's behavior simple, at the cost of not
+preserving the *direction* of a saturated multi-axis rate command exactly — judged an acceptable
+tradeoff at this milestone, same as `Pid`'s own independent-axis saturation.
+`tests/attitude_controller_test.cpp`'s `test_rate_limit_saturates` confirms the clamp is exact and
+that saturating one axis leaves the other two unaffected.
+
+### Gains and limits are placeholders, not tuned values
+
+`AttitudeControllerConfig`'s defaults (`detail::DefaultAttitudeKp()`,
+`detail::DefaultRateLimitRadps()` in `attitude_controller.h`) use the identical value on all three
+axes, the same "not physically motivated, just a starting point that behaves sanely in tests"
+placeholder approach `RateController`'s `detail::DefaultRateAxisGains()` used at Milestone 10 — see
+that section above for the full reasoning. Real tuning remains deferred to Milestone 13's
+closed-loop simulator or Milestone 17's real hardware.

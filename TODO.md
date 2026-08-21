@@ -204,11 +204,32 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   `Pid` per axis across multiple steps, and `reset()`. No attitude-loop or control-allocation code
   was added. `idf.py build` still succeeds (`firmware/` untouched this milestone).
 
-- [ ] **11. Attitude controller**
+- [x] **11. Attitude controller**
   Deliverable: an attitude (angle) control loop generating rate setpoints for the rate
   controller from attitude setpoints and estimator output.
   Done when: unit-tested for stability and bounded output across a representative range of
   attitude errors.
+  Done via: `flight_core/control/` — `AttitudeController` (`include/attitude_controller.h`,
+  `src/attitude_controller.cpp`), a stateless proportional quaternion-feedback outer loop:
+  `q_error = current.inverse() * desired` (derived from, and consistent with,
+  `Quaternion::integrate()`'s right-multiply body-rate convention — see docs/control.md for the
+  full derivation and why the opposite multiplication order silently flips control direction),
+  a double-cover shortest-path fix (negate `q_error` when its `w < 0`), and a small-angle
+  proportional law `commanded = 2 * kp .* q_error.{x,y,z}` per axis, feeding
+  `RateController::update()`'s `desired_radps` argument unchanged. Configurable per-axis gain
+  (`AttitudeControllerConfig::kp`) and an always-on per-axis rate-limit clamp
+  (`rate_limit_radps`, non-positive = disabled per axis) bound the outer loop's rate demand. An
+  optional `feedforward_radps` argument (default zero) is documented but not yet exercised by any
+  real caller. `flight_core/CMakeLists.txt` now also builds `control/src/attitude_controller.cpp`.
+  `tests/attitude_controller_test.cpp` (37 checks) covers zero error at both identity and a
+  non-trivial matched attitude, each axis's error in isolation (correct sign and magnitude against
+  an independently-computed closed form), a combined multi-axis error with distinct per-axis
+  gains, feedforward pass-through at zero error, the shortest-path fix for a >180 degree error, and
+  rate-limit saturation (exact clamp, other axes unaffected). No control-allocation code was added
+  and `RateController`'s own interface was left unmodified. See [docs/control.md](docs/control.md)
+  for the full quaternion-error derivation, the small-angle assumption/limitation, and the
+  explicitly-undertaken (not full recovery) scope of the 180-degree handling. `idf.py build` still
+  succeeds (`firmware/` untouched this milestone).
 
 - [ ] **12. Control allocation**
   Deliverable: `flight_core/control/` allocation logic mapping desired body torques/thrust to

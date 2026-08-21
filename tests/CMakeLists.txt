@@ -116,3 +116,8 @@ add_executable(rate_controller_test rate_controller_test.cpp)
 target_link_libraries(rate_controller_test flight_core)
 
 add_test(NAME rate_controller_test COMMAND rate_controller_test)
+
+add_executable(attitude_controller_test attitude_controller_test.cpp)
+target_link_libraries(attitude_controller_test flight_core)
+
+add_test(NAME attitude_controller_test COMMAND attitude_controller_test)
