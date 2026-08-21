@@ -93,3 +93,8 @@ add_executable(quaternion_test quaternion_test.cpp)
 target_link_libraries(quaternion_test flight_core)
 
 add_test(NAME quaternion_test COMMAND quaternion_test)
+
+add_executable(complementary_filter_test complementary_filter_test.cpp)
+target_link_libraries(complementary_filter_test flight_core)
+
+add_test(NAME complementary_filter_test COMMAND complementary_filter_test)

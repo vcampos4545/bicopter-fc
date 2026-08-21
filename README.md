@@ -7,19 +7,24 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 7 (platform-independent math library) is complete. `firmware/` is a real
-ESP-IDF v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
+**Status:** Milestone 8 (attitude state estimator) is complete. `firmware/` is a real ESP-IDF
+v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
 drivers, and `firmware/main/` runs six FreeRTOS tasks (SensorTask, EstimatorTask,
 FlightControlTask, RadioTask, TelemetryTask, SafetyTask) at documented priorities/periods with a
 queue, a task notification, an `esp_timer`, a mutex, and the task watchdog wired between them —
 task bodies are still stub/no-op logic (see [docs/architecture.md](docs/architecture.md)).
-`flight_core/math/` is now a real, unit-tested vector/matrix/quaternion library (see
-[docs/math.md](docs/math.md)) that builds standalone with zero ESP-IDF dependency; nothing yet
-consumes it (no estimator, controller, or simulator physics exist yet). No real hardware was
-available to verify actual I2C/PWM transactions or real-hardware task timing — see
-[TODO.md](TODO.md) for the full roadmap and what's implemented so far.
+`flight_core/math/` is a real, unit-tested vector/matrix/quaternion library (see
+[docs/math.md](docs/math.md)), and `flight_core/estimation/` now adds a real, unit-tested
+attitude estimator — a Mahony-style nonlinear complementary filter fusing gyro and accelerometer
+data into a quaternion attitude + angular velocity, behind an interface a future EKF could
+implement as a drop-in replacement (see [docs/estimation.md](docs/estimation.md)). Nothing in
+`firmware/`/`simulator/` calls into either `flight_core` library yet — no controller or simulator
+physics exist yet, and wiring the new estimator into `EstimatorTask` is a noted follow-up (see
+docs/estimation.md). No real hardware was available to verify actual I2C/PWM transactions or
+real-hardware task timing — see [TODO.md](TODO.md) for the full roadmap and what's implemented so
+far.
 
 ## Target vehicle
 
@@ -96,11 +101,9 @@ Used consistently across all code and documentation in this repository:
 - **World frame:** NED (North-East-Down), matching the body-frame handedness so that at zero
   attitude the body frame is aligned with the world frame.
 - **Attitude representation:** `flight_core/math/`'s `Quaternion` type (Hamilton product,
-  scalar-first, body-to-world; see [docs/math.md](docs/math.md)) is the representation available
-  as of Milestone 7. Which representation the estimator internally fuses/publishes is still
-  chosen in the state-estimator milestone ([docs/estimation.md](docs/estimation.md)); whatever is
-  chosen must round-trip cleanly with the body-frame convention above and with
-  `docs/math.md`'s conventions if it uses `Quaternion`.
+  scalar-first, body-to-world; see [docs/math.md](docs/math.md)) is both the internal and
+  published representation used by `flight_core/estimation/`'s attitude estimator as of
+  Milestone 8 (see [docs/estimation.md](docs/estimation.md)).
 
 ## Build instructions
 
@@ -125,9 +128,10 @@ boot-verification story.
 
 A standalone static library, plain CMake project (no ESP-IDF dependency), consumable both by
 `firmware/` (via ESP-IDF's CMake component system, once a milestone wires that in) and by
-`simulator/` (via a normal desktop CMake build, Milestone 9+). As of Milestone 7, `math/`
-(vectors, quaternions, small matrices — see [docs/math.md](docs/math.md)) is the only real
-content; `estimation/control/dynamics/vehicle/safety/` remain unimplemented.
+`simulator/` (via a normal desktop CMake build, Milestone 9+). `math/` (vectors, quaternions,
+small matrices — see [docs/math.md](docs/math.md)) and `estimation/` (the attitude estimator —
+see [docs/estimation.md](docs/estimation.md)) are real as of Milestones 7-8;
+`control/dynamics/vehicle/safety/` remain unimplemented.
 
 ```sh
 cmake -S flight_core -B flight_core/build
@@ -147,13 +151,14 @@ cmake --build simulator/build
 
 ### tests/
 
-As of Milestone 7: host-side tests for the sensors component's pure conversion/calibration/
-filtering/stale-detection logic (MPU6050 and BMP581), the actuators component's pure clamping/
-pulse-mapping logic (PWM ESC/servo), `firmware/main/`'s one piece of pure task logic (SensorTask's
-barometer-read decimation check), and `flight_core/math/`'s vector/matrix/quaternion library —
-all built independently of ESP-IDF via plain CMake/CTest. The math tests link the real
-`flight_core` static library (via `add_subdirectory`, see `tests/CMakeLists.txt`); the firmware
-driver tests still compile ESP-IDF-free `.c` sources directly by relative path, per
+Host-side tests for the sensors component's pure conversion/calibration/filtering/stale-detection
+logic (MPU6050 and BMP581), the actuators component's pure clamping/pulse-mapping logic (PWM
+ESC/servo), `firmware/main/`'s one piece of pure task logic (SensorTask's barometer-read
+decimation check), `flight_core/math/`'s vector/matrix/quaternion library, and (as of Milestone 8)
+`flight_core/estimation/`'s complementary-filter attitude estimator — all built independently of
+ESP-IDF via plain CMake/CTest. The `flight_core` tests link the real `flight_core` static library
+(via `add_subdirectory`, see `tests/CMakeLists.txt`); the firmware driver tests still compile
+ESP-IDF-free `.c` sources directly by relative path, per
 [AGENTS.md](AGENTS.md#driver-testing-convention).
 
 ```sh

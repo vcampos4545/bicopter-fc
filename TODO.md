@@ -117,12 +117,31 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   (firmware/ untouched this milestone); no estimator, controller, or dynamics-simulation logic was
   added.
 
-- [ ] **8. State estimator**
+- [x] **8. State estimator**
   Deliverable: `flight_core/estimation/` — an attitude (and altitude) estimator fusing IMU and
   barometer data into the vehicle state, per the approach chosen and documented in
   `docs/estimation.md`.
   Done when: the estimator converges to a correct attitude estimate against recorded or
   simulated sensor data, with unit tests.
+  Done via: `flight_core/estimation/` — `AttitudeEstimator` (`include/attitude_estimator.h`), an
+  abstract interface (`reset`/`update`/`estimate`) so a future EKF can be a drop-in replacement,
+  and `ComplementaryFilterEstimator` (`include/complementary_filter.h`, `src/complementary_filter.cpp`),
+  a Mahony-style nonlinear complementary filter: gyro integration via Milestone 7's
+  `Quaternion::integrate()`, corrected by an accelerometer-derived gravity-direction error fed back
+  as an angular-rate correction, gated to zero weight when `|accel|` deviates too far from 1g (the
+  classic complementary-filter high-acceleration failure mode). Real timestamps (not a fixed dt),
+  configurable static bias offsets plus optional online bias adaptation. Attitude only — altitude/
+  vertical-velocity estimation from the barometer is explicitly deferred, see
+  [docs/estimation.md](docs/estimation.md). `flight_core/CMakeLists.txt` now also builds
+  `estimation/src/complementary_filter.cpp`; `tests/complementary_filter_test.cpp` (linked against
+  the real `flight_core` library, same as Milestone 7's math tests) covers stationary convergence
+  from a bad initial attitude, known constant-rotation integration, noisy-input robustness, and the
+  high-acceleration accel-rejection behavior — 4513 passing checks. `docs/estimation.md` has the
+  full algorithm derivation, the EKF-drop-in interface contract, and why a complementary filter was
+  chosen over an EKF for this milestone. `idf.py build` still succeeds (`firmware/` untouched);
+  wiring `EstimatorTask` to actually call this estimator is left as an explicitly-noted follow-up
+  (needs `flight_core` wired as an ESP-IDF component plus a C/C++ boundary adapter — see
+  docs/estimation.md's "Firmware wiring" section), not attempted this milestone.
 
 - [ ] **9. Bicopter dynamics simulator**
   Deliverable: `simulator/physics/` — a rigid-body dynamics model of the bicopter (mass,
