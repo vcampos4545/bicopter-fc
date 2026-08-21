@@ -1,6 +1,5 @@
-# Standalone host-side tests, independent of ESP-IDF and (for now) of flight_core, which is
-# still an unimplemented stub (see ../flight_core/CMakeLists.txt). Compiles the sensors and
-# actuators components' pure conversion/calibration/clamping logic directly from
+# Standalone host-side tests, independent of ESP-IDF. Compiles the sensors and actuators
+# components' pure conversion/calibration/clamping logic directly from
 # ../firmware/components/{sensors,actuators}/ — that logic has zero ESP-IDF dependencies by
 # design (see ../firmware/components/sensors/include/mpu6050_convert.h and
 # ../firmware/components/actuators/include/pwm_esc_convert.h), so it builds and runs unmodified
@@ -9,15 +8,21 @@
 # math it depends on can be, and is, here. Milestone 6 (firmware/main/) is mostly FreeRTOS task/
 # queue/notification/timer/mutex scaffolding that isn't meaningfully testable off-target this way
 # - task_util.c's decimation check is the one piece pure enough to be worth pulling in the same way.
+#
+# Milestone 7 (flight_core/math/) is a real standalone plain-CMake library (see
+# ../flight_core/CMakeLists.txt), so its tests link against the `flight_core` target directly via
+# add_subdirectory rather than compiling its sources a second time.
 
 cmake_minimum_required(VERSION 3.16)
-project(bicopter_fc_tests C)
+project(bicopter_fc_tests C CXX)
 
 enable_testing()
 
 set(SENSORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/sensors)
 set(ACTUATORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/actuators)
 set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/main)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../flight_core flight_core-build)
 
 add_executable(mpu6050_convert_test
     mpu6050_convert_test.c
@@ -73,3 +78,18 @@ add_executable(task_util_test
 target_include_directories(task_util_test PRIVATE ${MAIN_DIR})
 
 add_test(NAME task_util_test COMMAND task_util_test)
+
+add_executable(vec3_test vec3_test.cpp)
+target_link_libraries(vec3_test flight_core)
+
+add_test(NAME vec3_test COMMAND vec3_test)
+
+add_executable(mat3_test mat3_test.cpp)
+target_link_libraries(mat3_test flight_core)
+
+add_test(NAME mat3_test COMMAND mat3_test)
+
+add_executable(quaternion_test quaternion_test.cpp)
+target_link_libraries(quaternion_test flight_core)
+
+add_test(NAME quaternion_test COMMAND quaternion_test)

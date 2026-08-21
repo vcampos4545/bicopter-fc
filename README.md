@@ -7,17 +7,19 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 6 (FreeRTOS task architecture) is complete. `firmware/` is a real ESP-IDF
-v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
+**Status:** Milestone 7 (platform-independent math library) is complete. `firmware/` is a real
+ESP-IDF v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
-drivers, and `firmware/main/` now runs six FreeRTOS tasks (SensorTask, EstimatorTask,
+drivers, and `firmware/main/` runs six FreeRTOS tasks (SensorTask, EstimatorTask,
 FlightControlTask, RadioTask, TelemetryTask, SafetyTask) at documented priorities/periods with a
 queue, a task notification, an `esp_timer`, a mutex, and the task watchdog wired between them —
-task bodies are still stub/no-op logic (see [docs/architecture.md](docs/architecture.md)). No
-real hardware was available to verify actual I2C/PWM transactions or real-hardware task timing.
-No estimator, controller, or simulator physics exist yet — see [TODO.md](TODO.md) for the full
-roadmap and what's implemented so far.
+task bodies are still stub/no-op logic (see [docs/architecture.md](docs/architecture.md)).
+`flight_core/math/` is now a real, unit-tested vector/matrix/quaternion library (see
+[docs/math.md](docs/math.md)) that builds standalone with zero ESP-IDF dependency; nothing yet
+consumes it (no estimator, controller, or simulator physics exist yet). No real hardware was
+available to verify actual I2C/PWM transactions or real-hardware task timing — see
+[TODO.md](TODO.md) for the full roadmap and what's implemented so far.
 
 ## Target vehicle
 
@@ -93,14 +95,18 @@ Used consistently across all code and documentation in this repository:
   right, clockwise viewed from above).
 - **World frame:** NED (North-East-Down), matching the body-frame handedness so that at zero
   attitude the body frame is aligned with the world frame.
-- **Attitude representation:** to be chosen in the state-estimator milestone
-  ([docs/estimation.md](docs/estimation.md)); whatever is chosen must round-trip cleanly with
-  the body-frame convention above.
+- **Attitude representation:** `flight_core/math/`'s `Quaternion` type (Hamilton product,
+  scalar-first, body-to-world; see [docs/math.md](docs/math.md)) is the representation available
+  as of Milestone 7. Which representation the estimator internally fuses/publishes is still
+  chosen in the state-estimator milestone ([docs/estimation.md](docs/estimation.md)); whatever is
+  chosen must round-trip cleanly with the body-frame convention above and with
+  `docs/math.md`'s conventions if it uses `Quaternion`.
 
 ## Build instructions
 
-`firmware/` is buildable as of Milestone 2; the other components are not yet. This section
-documents the intended build story per component; it will be filled in as each piece lands.
+`firmware/` is buildable as of Milestone 2 and `flight_core/` as of Milestone 7; `simulator/` is
+not yet. This section documents the build story per component; it will be filled in as each
+remaining piece lands.
 
 ### firmware/ (ESP-IDF)
 
@@ -117,9 +123,11 @@ boot-verification story.
 
 ### flight_core/ (platform-independent library)
 
-Not yet implemented beyond directory scaffolding. Intended to build as a standalone static
-library with a plain CMake project (no ESP-IDF dependency), consumable both by `firmware/`
-(via ESP-IDF's CMake component system) and by `simulator/` (via a normal desktop CMake build).
+A standalone static library, plain CMake project (no ESP-IDF dependency), consumable both by
+`firmware/` (via ESP-IDF's CMake component system, once a milestone wires that in) and by
+`simulator/` (via a normal desktop CMake build, Milestone 9+). As of Milestone 7, `math/`
+(vectors, quaternions, small matrices — see [docs/math.md](docs/math.md)) is the only real
+content; `estimation/control/dynamics/vehicle/safety/` remain unimplemented.
 
 ```sh
 cmake -S flight_core -B flight_core/build
@@ -139,11 +147,14 @@ cmake --build simulator/build
 
 ### tests/
 
-As of Milestone 6: host-side tests for the sensors component's pure conversion/calibration/
+As of Milestone 7: host-side tests for the sensors component's pure conversion/calibration/
 filtering/stale-detection logic (MPU6050 and BMP581), the actuators component's pure clamping/
-pulse-mapping logic (PWM ESC/servo), and `firmware/main/`'s one piece of pure task logic
-(SensorTask's barometer-read decimation check) — built independently of ESP-IDF via plain
-CMake/CTest (no `flight_core` dependency yet, since `flight_core` remains an unimplemented stub).
+pulse-mapping logic (PWM ESC/servo), `firmware/main/`'s one piece of pure task logic (SensorTask's
+barometer-read decimation check), and `flight_core/math/`'s vector/matrix/quaternion library —
+all built independently of ESP-IDF via plain CMake/CTest. The math tests link the real
+`flight_core` static library (via `add_subdirectory`, see `tests/CMakeLists.txt`); the firmware
+driver tests still compile ESP-IDF-free `.c` sources directly by relative path, per
+[AGENTS.md](AGENTS.md#driver-testing-convention).
 
 ```sh
 cmake -S tests -B tests/build
@@ -155,6 +166,7 @@ ctest --test-dir tests/build --output-on-failure
 
 - [TODO.md](TODO.md) — engineering roadmap, 18 milestones
 - [docs/architecture.md](docs/architecture.md) — pipeline, data flow, HAL design, FreeRTOS tasks
+- [docs/math.md](docs/math.md) — quaternion/Euler/rotation-matrix conventions, `flight_core/math/` scope
 - [docs/firmware.md](docs/firmware.md) — ESP-IDF toolchain version, build steps, QEMU boot verification
 - [docs/hardware.md](docs/hardware.md) — hardware assumptions and how they're made configurable
 - [docs/control.md](docs/control.md) — control approach (stub; derived in the control milestones)
