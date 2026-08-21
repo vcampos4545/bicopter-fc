@@ -93,19 +93,51 @@ finalizes the board config. No radio code exists yet. `flight_core/CMakeLists.tx
 static library — `flight_core/math/` (vectors, quaternions, small matrices; see
 [docs/math.md](docs/math.md), Milestone 7) and, as of Milestone 8, `flight_core/estimation/` (a
 Mahony-style nonlinear complementary-filter attitude estimator behind the `AttitudeEstimator`
-interface, see [docs/estimation.md](docs/estimation.md)) are real content. Nothing in `firmware/`
-or `simulator/` consumes `flight_core` yet — `EstimatorTask` (`firmware/main/estimator_task.c`)
-still only logs/discards each sensor sample; wiring it to actually call
-`ComplementaryFilterEstimator` is a noted follow-up (needs `flight_core` wired as an ESP-IDF
-component plus a C/C++ boundary adapter converting `imu_reading_t`'s microsecond timestamps to
-`ImuSample`'s SI-seconds ones — see docs/estimation.md's "Firmware wiring" section), not yet done.
-`simulator/CMakeLists.txt` is still a non-functional placeholder (commented-out build wiring) — do
-not expect it to configure or build yet. `docs/control.md` remains an intentional stub: the
-force/torque model and control-allocation math must be *derived* from real vehicle geometry in its
-milestone, not invented ahead of time. `docs/estimation.md` covers attitude estimation as of
-Milestone 8; barometer-based altitude/vertical-velocity estimation is explicitly deferred to a
-later milestone (noted there, not silently missing). See [TODO.md](TODO.md) for the full milestone
-sequence and current status.
+interface, see [docs/estimation.md](docs/estimation.md)) are real content. Nothing in `firmware/` consumes `flight_core` yet — `EstimatorTask`
+(`firmware/main/estimator_task.c`) still only logs/discards each sensor sample; wiring it to
+actually call `ComplementaryFilterEstimator` is a noted follow-up (needs `flight_core` wired as
+an ESP-IDF component plus a C/C++ boundary adapter converting `imu_reading_t`'s microsecond
+timestamps to `ImuSample`'s SI-seconds ones — see docs/estimation.md's "Firmware wiring" section),
+not yet done. As of Milestone 9, `flight_core/vehicle/` adds `VehicleParams`/`MotorParams`
+(header-only config data, see [docs/dynamics.md](docs/dynamics.md)), and `simulator/physics/` is
+real: `bicopter_physics`, a standalone CMake static library (`simulator/physics/CMakeLists.txt`,
+same pattern as `flight_core/CMakeLists.txt`) implementing the rigid-body forward-dynamics model
+and linking `flight_core` for `Quaternion`/`Vec3`/`VehicleParams`. `simulator/CMakeLists.txt`
+configures `physics/` as a real subdirectory (standalone-buildable via
+`cmake -S simulator -B simulator/build`); `simulator/sensors/`, `simulator/visualization/`, and
+`simulator/main.cpp` (the interactive `bicopter_sim` executable) remain unimplemented — no
+simulated `Imu`/`Barometer` HAL implementations exist yet, so nothing yet drives `flight_core`'s
+estimator from simulated data. `docs/control.md` remains an intentional stub: the force/torque
+model and control-allocation math must be *derived* from real vehicle geometry in its milestone,
+not invented ahead of time — though as of Milestone 9 that geometry (motor arm offsets, tilt-axis
+convention, thrust/torque coefficients) is now recorded in `VehicleParams` and
+[docs/dynamics.md](docs/dynamics.md), so Milestone 12 should consume it rather than re-deriving
+or duplicating it. `docs/estimation.md` covers attitude estimation as of Milestone 8;
+barometer-based altitude/vertical-velocity estimation and simulated sensor noise/bias models are
+both explicitly deferred to later milestones (noted in docs/estimation.md and docs/dynamics.md
+respectively, not silently missing). See [TODO.md](TODO.md) for the full milestone sequence and
+current status.
+
+## CMake: guard a shared subdirectory before add_subdirectory-ing it
+
+As of Milestone 9, more than one top-level CMake entry point can pull in `flight_core`:
+`tests/CMakeLists.txt` adds it directly (for the math/estimation tests), and
+`simulator/physics/CMakeLists.txt` also needs it (for `Quaternion`/`Vec3`/`VehicleParams`) —
+including it from both `tests/CMakeLists.txt` (which nests `simulator/physics/` as a
+subdirectory) and standalone (`cmake -S simulator -B simulator/build`, which reaches
+`flight_core` only through `simulator/physics/CMakeLists.txt`'s own `add_subdirectory`) would
+`add_subdirectory` the same physical `flight_core/` directory twice in one configure, which is a
+hard CMake error (duplicate target). The fix, in `simulator/physics/CMakeLists.txt`:
+
+```cmake
+if(NOT TARGET flight_core)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../flight_core ${CMAKE_CURRENT_BINARY_DIR}/flight_core-build)
+endif()
+```
+
+Any later milestone that reuses a library from more than one entry point (e.g. Milestone 12's
+`flight_core/control/` linked from both `tests/` and `simulator/`) should follow the same
+guarded pattern rather than assuming there's only ever one path into the directory tree.
 
 ## Firmware toolchain
 
