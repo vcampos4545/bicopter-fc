@@ -7,7 +7,7 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 9 (bicopter dynamics simulator) is complete. `firmware/` is a real ESP-IDF
+**Status:** Milestone 10 (PID/rate controller) is complete. `firmware/` is a real ESP-IDF
 v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
@@ -25,11 +25,17 @@ geometry, thrust/torque/drag coefficients) meant to be consumed by both the simu
 future control-allocation milestone. `simulator/physics/` is a real, unit-tested rigid-body
 forward-dynamics model (`m*v_dot=F` and `I*omega_dot + omega x (I*omega)=tau`, integrated with
 semi-implicit Euler and Milestone 7's `Quaternion::integrate()`) — see
-[docs/dynamics.md](docs/dynamics.md). Nothing in `firmware/`/`simulator/` calls into
-`flight_core/estimation/` yet — wiring the estimator into `EstimatorTask` is a noted follow-up
-(see docs/estimation.md) — and no controller or control-allocation code exists yet (Milestones
-10-12). No real hardware was available to verify actual I2C/PWM transactions or real-hardware
-task timing — see [TODO.md](TODO.md) for the full roadmap and what's implemented so far.
+[docs/dynamics.md](docs/dynamics.md). `flight_core/control/` now holds a generic `Pid` building
+block (configurable gains, output saturation, clamping anti-windup, a documented
+derivative-on-measurement/derivative-on-error choice, explicit per-call `dt`) and a
+`RateController` built on it — three independent roll/pitch/yaw-rate PID loops consuming
+`AttitudeEstimate::angular_velocity_radps` and producing a desired body torque — see
+[docs/control.md](docs/control.md). Nothing in `firmware/`/`simulator/` calls into
+`flight_core/estimation/` or `flight_core/control/` yet — wiring the estimator into
+`EstimatorTask` is a noted follow-up (see docs/estimation.md) — and the attitude controller and
+control-allocation code remain unimplemented (Milestones 11-12). No real hardware was available to
+verify actual I2C/PWM transactions or real-hardware task timing — see [TODO.md](TODO.md) for the
+full roadmap and what's implemented so far.
 
 ## Target vehicle
 
@@ -135,9 +141,10 @@ A standalone static library, plain CMake project (no ESP-IDF dependency), consum
 `firmware/` (via ESP-IDF's CMake component system, once a milestone wires that in) and by
 `simulator/` (via a normal desktop CMake build, real as of Milestone 9). `math/` (vectors,
 quaternions, small matrices — see [docs/math.md](docs/math.md)), `estimation/` (the attitude
-estimator — see [docs/estimation.md](docs/estimation.md)), and `vehicle/` (`VehicleParams`, the
-shared vehicle-constants config — see [docs/dynamics.md](docs/dynamics.md)) are real as of
-Milestones 7-9; `control/dynamics/safety/` remain unimplemented.
+estimator — see [docs/estimation.md](docs/estimation.md)), `vehicle/` (`VehicleParams`, the
+shared vehicle-constants config — see [docs/dynamics.md](docs/dynamics.md)), and `control/` (the
+`Pid` building block and `RateController` — see [docs/control.md](docs/control.md)) are real as of
+Milestones 7-10; `dynamics/safety/` remain unimplemented.
 
 ```sh
 cmake -S flight_core -B flight_core/build
@@ -164,8 +171,9 @@ Host-side tests for the sensors component's pure conversion/calibration/filterin
 logic (MPU6050 and BMP581), the actuators component's pure clamping/pulse-mapping logic (PWM
 ESC/servo), `firmware/main/`'s one piece of pure task logic (SensorTask's barometer-read
 decimation check), `flight_core/math/`'s vector/matrix/quaternion library,
-`flight_core/estimation/`'s complementary-filter attitude estimator (Milestone 8), and (as of
-Milestone 9) `simulator/physics/`'s rigid-body dynamics model — all built independently of
+`flight_core/estimation/`'s complementary-filter attitude estimator (Milestone 8),
+`simulator/physics/`'s rigid-body dynamics model (Milestone 9), and (as of Milestone 10)
+`flight_core/control/`'s `Pid` building block and `RateController` — all built independently of
 ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics` tests link the real
 static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`); the firmware driver tests
 still compile ESP-IDF-free `.c` sources directly by relative path, per
