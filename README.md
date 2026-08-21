@@ -7,7 +7,7 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 15 (CRSF RC receiver) is complete. `firmware/` is a real ESP-IDF
+**Status:** Milestone 16 (safety, failsafes, and battery monitoring) is complete. `firmware/` is a real ESP-IDF
 v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
@@ -91,9 +91,42 @@ as a build-time alternative to ESP-NOW (mutually exclusive, enforced by a `#erro
 to fire). No physical CRSF receiver was available to verify real channel values/timing, but
 `idf.py build` was confirmed to succeed with the CRSF option off, on, and to fail loudly with both
 radio options on, and the pure frame/channel logic has 140 passing host-side tests — see
-[docs/radio.md](docs/radio.md) for the full writeup. No real hardware was available to verify
-actual I2C/PWM/radio transactions or real-hardware task timing — see [TODO.md](TODO.md) for the
-full roadmap and what's implemented so far.
+[docs/radio.md](docs/radio.md) for the full writeup. As of Milestone 16,
+`firmware/components/safety/` implements the full `BOOT`/`DISARMED`/`ARMED`/`STABILIZE`/
+`ALTITUDE_HOLD` (Kconfig-gated off by default)/`FAILSAFE`/`ERROR` flight-mode state machine,
+arming preconditions, and failsafe detection/response as plain, ESP-IDF-free C — the same
+driver-testing-convention split as every other sensor/actuator/radio driver — so
+`firmware/main/safety_task.c` calls it directly with no C++/ESP-IDF-component bridge to build;
+`flight_core/safety/` stays an empty scaffold (see [docs/safety.md](docs/safety.md) for why). This
+replaces Milestone 6's always-disarmed `SafetyTask` stub with real logic, wired into its existing
+100Hz loop: `FAILSAFE` is latching (only clears via explicit disarm, never auto-resumes flight),
+`ERROR` is reachable only from `BOOT`/`DISARMED` (in-flight faults always route through the single,
+well-tested `FAILSAFE` path instead), and arming requires every documented precondition (valid IMU/
+estimator, live radio plus an explicit arm command, battery above LOW, no critical errors, and the
+design brief's explicit stationary-during-arming check) with no partial-credit path — the system
+never auto-arms. Every required failsafe condition except task-watchdog failure (not representable
+at the application level, per an existing Milestone 6 finding) is detected with a configurable,
+per-condition response defaulting to a safe motor shutdown/disarm, never an attempted autonomous
+landing, per the design brief; radio loss fires deterministically off `radio_health_t.link_alive`
+alone. `firmware/components/power/` adds ADC-based battery voltage monitoring (ESP32's
+line-fitting calibration scheme, its only supported one), a configurable voltage-divider ratio (no
+divider chosen yet), an explicitly-approximate voltage-to-percentage curve, configurable LOW/
+CRITICAL thresholds, and optional current sensing, gated behind
+`CONFIG_BICOPTER_BATTERY_ENABLED` (default off) and failing closed while disabled. Real live-data
+wiring this milestone: IMU/barometer validity and raw gyro rate (peeked from `SensorTask`'s sample
+queue), radio arm command and link health (`RadioTask` now publishes via a new `radio_state.h`,
+its first live cross-task consumer), and battery data when enabled. Honestly not wired: estimator
+validity and attitude, since no estimator runs in firmware yet (the same open item Milestones
+8/10-13 already track) — `estimator_valid` is hardcoded false, never faked true, so arming is
+structurally blocked in today's firmware regardless of hardware state; see
+[docs/safety.md](docs/safety.md)'s full breakdown. `idf.py build` succeeds with the battery/
+current-sense/altitude-hold options each off (default) and on; 185 new passing host-side checks
+cover the full transition table, every arming precondition, every failsafe condition, and the
+battery conversion math (`tests/flight_mode_test.c`, `tests/arming_test.c`,
+`tests/failsafe_test.c`, `tests/actuator_command_check_test.c`, `tests/battery_convert_test.c`).
+No physical hardware was available to verify actual I2C/PWM/radio/ADC transactions or
+real-hardware task timing — see [TODO.md](TODO.md) for the full roadmap and what's implemented so
+far.
 
 ## Target vehicle
 
@@ -242,7 +275,11 @@ closed-loop convergence tests (`sim_loop_test`, see [docs/simulation.md](docs/si
 — as of Milestone 14 — the radio component's pure packet-format/sequence-staleness/packet-loss
 logic (`radio_packet_test`, see [docs/radio.md](docs/radio.md)), and — as of Milestone 15 — the
 radio component's pure CRSF CRC8/frame-sync/channel-decode/calibration logic
-(`crsf_frame_test`, see [docs/radio.md](docs/radio.md)) — all built independently of
+(`crsf_frame_test`, see [docs/radio.md](docs/radio.md)), and — as of Milestone 16 — the safety
+component's pure flight-mode-transition/arming-precondition/failsafe-evaluation/actuator-command-
+validation logic (`flight_mode_test`, `arming_test`, `failsafe_test`,
+`actuator_command_check_test`) and the power component's pure battery ADC-conversion logic
+(`battery_convert_test`) — see [docs/safety.md](docs/safety.md) — all built independently of
 ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
 tests link the real static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`);
 `control_allocator_test` additionally links `bicopter_physics` (not just `flight_core`) so its
@@ -278,5 +315,8 @@ ctest --test-dir tests/build --output-on-failure
   procedure, CRSF frame format/protocol-choice rationale/channel-mapping and calibration
   procedure, both backends' callback-or-driver/task-context splits, and packet-loss/staleness
   tracking
+- [docs/safety.md](docs/safety.md) — flight-mode state machine and full transition table, arming
+  preconditions, every failsafe condition and its default response, and the battery-monitoring
+  model/thresholds
 - [AGENTS.md](AGENTS.md) — structural/convention decisions for engineers and agents working on
   later milestones

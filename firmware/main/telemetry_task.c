@@ -19,6 +19,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "flight_mode.h"
 #include "safety_state.h"
 #include "telemetry_task.h"
 
@@ -44,8 +45,9 @@ void telemetry_task(void *pvParameters)
             safety_state_get(&safety);
 
             if ((cycle % 20) == 1) { // ~once/second at 20Hz
-                ESP_LOGI(TAG, "cycle=%lu armed=%d (no downlink transport yet - milestone 14+)",
-                         (unsigned long)cycle, safety.armed);
+                ESP_LOGI(TAG, "cycle=%lu mode=%s armed=%d (no downlink transport yet - see "
+                              "docs/radio.md)",
+                         (unsigned long)cycle, flight_mode_name(safety.mode), safety.armed);
             }
         }
 

@@ -24,6 +24,12 @@
 # decoding, channel mapping, loss estimate) the same way -- crsf_frame_test.c compiles it directly.
 # The actual UART driver calls (firmware/components/radio/src/crsf_radio.c) are likewise
 # hardware-dependent and not host-testable.
+#
+# Milestone 16 adds two new components, both following this same pattern: safety/ (flight_mode.c,
+# arming.c, failsafe.c, actuator_command_check.c -- every file in the component is ESP-IDF-free by
+# design, see firmware/components/safety/CMakeLists.txt) and power/ (battery_convert.c is the pure
+# half of battery monitoring; battery.c, the ESP-IDF esp_adc oneshot driver I/O, is not
+# host-testable, same split as every other sensor driver).
 
 cmake_minimum_required(VERSION 3.16)
 project(bicopter_fc_tests C CXX)
@@ -33,6 +39,8 @@ enable_testing()
 set(SENSORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/sensors)
 set(ACTUATORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/actuators)
 set(RADIO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/radio)
+set(SAFETY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/safety)
+set(POWER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/power)
 set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/main)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../flight_core flight_core-build)
@@ -170,3 +178,47 @@ add_executable(sim_loop_test sim_loop_test.cpp)
 target_link_libraries(sim_loop_test bicopter_sim_loop)
 
 add_test(NAME sim_loop_test COMMAND sim_loop_test)
+
+# Milestone 16: firmware/components/safety/ (flight-mode state machine, arming preconditions,
+# failsafe detection/response, defense-in-depth actuator-command validation) and
+# firmware/components/power/'s pure battery conversion math -- see docs/safety.md.
+add_executable(flight_mode_test
+    flight_mode_test.c
+    ${SAFETY_DIR}/src/flight_mode.c
+)
+target_include_directories(flight_mode_test PRIVATE ${SAFETY_DIR}/include)
+
+add_test(NAME flight_mode_test COMMAND flight_mode_test)
+
+add_executable(arming_test
+    arming_test.c
+    ${SAFETY_DIR}/src/arming.c
+)
+target_include_directories(arming_test PRIVATE ${SAFETY_DIR}/include)
+
+add_test(NAME arming_test COMMAND arming_test)
+
+add_executable(failsafe_test
+    failsafe_test.c
+    ${SAFETY_DIR}/src/failsafe.c
+)
+target_include_directories(failsafe_test PRIVATE ${SAFETY_DIR}/include)
+
+add_test(NAME failsafe_test COMMAND failsafe_test)
+
+add_executable(actuator_command_check_test
+    actuator_command_check_test.c
+    ${SAFETY_DIR}/src/actuator_command_check.c
+)
+target_include_directories(actuator_command_check_test PRIVATE ${SAFETY_DIR}/include)
+target_link_libraries(actuator_command_check_test m)
+
+add_test(NAME actuator_command_check_test COMMAND actuator_command_check_test)
+
+add_executable(battery_convert_test
+    battery_convert_test.c
+    ${POWER_DIR}/src/battery_convert.c
+)
+target_include_directories(battery_convert_test PRIVATE ${POWER_DIR}/include)
+
+add_test(NAME battery_convert_test COMMAND battery_convert_test)

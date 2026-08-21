@@ -12,6 +12,7 @@
 
 #include "estimator_task.h"
 #include "flight_control_task.h"
+#include "radio_state.h"
 #include "radio_task.h"
 #include "safety_state.h"
 #include "safety_task.h"
@@ -51,8 +52,11 @@ void app_main(void)
         abort();
     }
 
-    // Mutex: the one genuinely cross-task shared state this milestone has (safety_state.h).
+    // Mutexes: the genuinely cross-task shared state (safety_state.h, and - as of Milestone 16 -
+    // radio_state.h, publishing RadioTask's latest command/health for SafetyTask's real arming/
+    // failsafe evaluation - see radio_state.h).
     ESP_ERROR_CHECK(safety_state_init());
+    ESP_ERROR_CHECK(radio_state_init());
 
     // -> actuators are intentionally NOT initialized here. actuators_init_safe()
     // (firmware/components/actuators/include/actuators_init.h) exists and its own docs name this
@@ -74,6 +78,7 @@ void app_main(void)
     estimator_params.sample_queue = s_sensor_sample_queue;
 
     static safety_task_params_t safety_params;
+    safety_params.sensor_sample_queue = s_sensor_sample_queue;
 
     TaskHandle_t flight_control_handle = NULL;
     TaskHandle_t sensor_handle = NULL;
