@@ -1,3 +1,218 @@
+menu "Bicopter operating mode"
+
+    choice BICOPTER_OPERATING_MODE
+        prompt "Operating mode"
+        default BICOPTER_OPERATING_MODE_SIMULATION
+        help
+            Milestone 18 (see docs/bench_test.md) - a single, build-time-selected mode for the
+            whole firmware image, chosen as a Kconfig choice rather than a runtime-switchable
+            value specifically to rule out mode-confusion at runtime (e.g. a stale radio packet or
+            a bug flipping the running vehicle into HARDWARE_TEST's relaxed motor path mid-flight)
+            - see docs/bench_test.md's "Why build-time, not boot-time-latched" section for the
+            full safety rationale. Changing mode means reflashing, which is the point.
+
+        config BICOPTER_OPERATING_MODE_SIMULATION
+            bool "SIMULATION - development default, no real actuator output expected"
+            help
+                The safe default for day-to-day firmware development, CI, and QEMU boot
+                verification: nothing about this mode assumes real actuator hardware is attached
+                (CONFIG_BICOPTER_ACTUATORS_ENABLED normally stays off alongside it, same as every
+                other not-yet-wired hardware option in this project). The bench-test console's
+                read-only sensor/radio streaming commands still work in this mode; servo/esc_test
+                commands work only if actuators are separately enabled. Not to be confused with
+                simulator/ (the desktop physics simulator) - this mode governs firmware/, and does
+                not itself simulate anything; see docs/bench_test.md.
+
+        config BICOPTER_OPERATING_MODE_HARDWARE_TEST
+            bool "HARDWARE_TEST - bench bring-up: individual actuator/sensor test commands, motor test gated"
+            help
+                For bringing up real hardware on the bench per docs/bench_test.md's recommended
+                sequence. Unlocks the bench-test console's esc_test command (motor spin, gated
+                behind an explicit CONFIRM token distinct from the normal arm sequence - see
+                docs/bench_test.md). The normal flight arm/throttle path is unaffected by this
+                choice; combine with CONFIG_BICOPTER_BENCH_TEST_MOTORS_DISABLED for a
+                belt-and-suspenders bench session where even a confirmed esc_test cannot spin a
+                motor.
+
+        config BICOPTER_OPERATING_MODE_FLIGHT
+            bool "FLIGHT - normal operation"
+            help
+                Normal flight operation: the arming/failsafe state machine (firmware/components/
+                safety/) and, once a future milestone wires it in, the real control-allocation
+                actuator path. The bench-test console's esc_test and servo commands are refused in
+                this mode (see docs/bench_test.md) - bypassing the control loop or spinning a
+                motor from a diagnostic console has no legitimate use in a flight build. Read-only
+                sensor/radio streaming commands remain available for in-flight diagnostics.
+    endchoice
+
+endmenu
+
+menu "Bicopter bench-test tooling"
+
+    config BICOPTER_BENCH_TEST_MOTORS_DISABLED
+        bool "BENCH_TEST build: permanently disable motor PWM output at compile time"
+        default n
+        help
+            The BENCH_TEST build configuration required by Milestone 18 (docs/bench_test.md).
+            When set, firmware/components/actuators/src/pwm_esc_output.c compiles out - via #if,
+            not a runtime check - both the LEDC channel/timer configuration that would attach the
+            ESC PWM signal to its GPIO and the single call site that ever updates that channel's
+            duty cycle. No code path in this build can produce a motor-spinning PWM signal,
+            regardless of what throttle value any caller (including a confirmed HARDWARE_TEST-mode
+            esc_test command, or a real control-allocation path once one is wired) requests. Tilt
+            servos are unaffected - this only disables the ESC/motor driver. See
+            docs/bench_test.md for exactly what is and isn't covered by this guarantee.
+
+    config BICOPTER_BENCH_TEST_CONSOLE_UART_PORT
+        int "Bench-test console UART port (0, 1, or 2)"
+        default 2
+        help
+            Deliberately defaults to UART2, distinct from UART0 (logging/programming) and CRSF's
+            own default of UART1 (see the CRSF radio menu above), so the bench-test console can run
+            concurrently with logging and, if ever needed, a CRSF receiver without contending for
+            the same UART. Placeholder, not verified against any actual board wiring - see
+            docs/hardware.md.
+
+    config BICOPTER_BENCH_TEST_CONSOLE_RX_GPIO
+        int "Bench-test console UART RX GPIO"
+        default 4
+        help
+            Placeholder default, not verified against any actual board wiring - see
+            docs/hardware.md.
+
+    config BICOPTER_BENCH_TEST_CONSOLE_TX_GPIO
+        int "Bench-test console UART TX GPIO"
+        default 2
+        help
+            Placeholder default, not verified against any actual board wiring - see
+            docs/hardware.md.
+
+    config BICOPTER_BENCH_TEST_CONSOLE_BAUD_RATE
+        int "Bench-test console UART baud rate"
+        default 115200
+
+    config BICOPTER_BENCH_TEST_ESC_MAX_THROTTLE_PERCENT
+        int "esc_test command: maximum allowed throttle (percent, 0-100)"
+        default 15
+        range 0 100
+        help
+            A hard ceiling the bench-test console's esc_test command clamps every request to,
+            independent of (and in addition to) the ESC driver's own min_throttle/max_throttle
+            clamp - the design brief's "specific low throttle value" requirement, enforced in
+            software rather than left to whatever value an operator happens to type. 15% is a
+            conservative placeholder for "visibly spinning but not aggressive," not derived from
+            any specific ESC/motor combination - lower it further for an untested prop/motor pair.
+
+    config BICOPTER_BENCH_TEST_ESC_TEST_DURATION_MS
+        int "esc_test command: auto-return-to-idle duration (ms)"
+        default 2000
+        help
+            esc_test commands the clamped throttle for exactly this long, then automatically calls
+            motor_output_set_idle() and logs that it did - a confirmed esc_test can never leave a
+            motor spinning indefinitely because an operator forgot a second "stop" command. See
+            docs/bench_test.md.
+
+endmenu
+
+menu "Bicopter actuator hardware (ESC + servo)"
+
+    config BICOPTER_ACTUATORS_ENABLED
+        bool "Motor ESCs and tilt servos are wired to this board"
+        default n
+        help
+            No ESP32 board/pinout has been finalized for this project yet (see docs/hardware.md),
+            same status as CONFIG_BICOPTER_SENSORS_ENABLED. Leave disabled until a board is chosen
+            and the pins below are set to match it. While disabled, main() does not call
+            actuators_init_safe() and the bench-test console's servo/esc_test commands report
+            "actuators not initialized" instead of attempting to drive a GPIO nothing is connected
+            to.
+
+    config BICOPTER_ACTUATOR_PWM_FREQ_HZ
+        int "ESC/servo PWM frequency (Hz)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 50
+        help
+            50Hz standard RC PWM, shared by both motor units and both servo units in this
+            placeholder config - see docs/hardware.md#pwm-esc--tilt-servo-milestone-5 for why LEDC
+            over MCPWM and where a BLHeli ESC's real tolerance for a higher rate would be
+            determined.
+
+    config BICOPTER_ACTUATOR_PWM_DUTY_RESOLUTION_BITS
+        int "LEDC duty resolution (bits)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 16
+
+    config BICOPTER_MOTOR1_GPIO
+        int "Motor 1 (ESC) PWM GPIO"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 25
+        help
+            Placeholder default, not verified against any actual board wiring - see
+            docs/hardware.md.
+
+    config BICOPTER_MOTOR2_GPIO
+        int "Motor 2 (ESC) PWM GPIO"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 26
+
+    config BICOPTER_SERVO1_GPIO
+        int "Servo 1 (tilt) PWM GPIO"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 27
+
+    config BICOPTER_SERVO2_GPIO
+        int "Servo 2 (tilt) PWM GPIO"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 14
+
+    config BICOPTER_ESC_MIN_PULSE_US
+        int "ESC calibrated min pulse width (us, throttle=0.0)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 1000
+        help
+            See docs/hardware.md's ESC calibration section for how this is normally determined on
+            real hardware - not calibrated against any real ESC in this environment.
+
+    config BICOPTER_ESC_MAX_PULSE_US
+        int "ESC calibrated max pulse width (us, throttle=1.0)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 2000
+
+    config BICOPTER_ESC_IDLE_PULSE_US
+        int "ESC idle pulse width (us) - commanded at safe-init and by set_idle()"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 1000
+
+    config BICOPTER_SERVO_MIN_PULSE_US
+        int "Servo calibrated min pulse width (us, min_angle)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 1000
+
+    config BICOPTER_SERVO_MAX_PULSE_US
+        int "Servo calibrated max pulse width (us, max_angle)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 2000
+
+    config BICOPTER_SERVO_MIN_ANGLE_MILLIRAD
+        int "Servo min tilt angle (milliradians)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default -785
+        help
+            Milliradians (angle_rad * 1000) so this stays an integer Kconfig value - default
+            -785 = about -45 degrees. See docs/hardware.md's tilt-servo geometry section.
+
+    config BICOPTER_SERVO_MAX_ANGLE_MILLIRAD
+        int "Servo max tilt angle (milliradians)"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 785
+
+    config BICOPTER_SERVO_NEUTRAL_ANGLE_MILLIRAD
+        int "Servo neutral tilt angle (milliradians) - commanded at safe-init and by set_neutral()"
+        depends on BICOPTER_ACTUATORS_ENABLED
+        default 0
+
+endmenu
+
 menu "Bicopter sensor hardware"
 
     config BICOPTER_SENSORS_ENABLED

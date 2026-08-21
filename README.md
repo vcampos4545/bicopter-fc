@@ -125,8 +125,20 @@ cover the full transition table, every arming precondition, every failsafe condi
 battery conversion math (`tests/flight_mode_test.c`, `tests/arming_test.c`,
 `tests/failsafe_test.c`, `tests/actuator_command_check_test.c`, `tests/battery_convert_test.c`).
 No physical hardware was available to verify actual I2C/PWM/radio/ADC transactions or
-real-hardware task timing — see [TODO.md](TODO.md) for the full roadmap and what's implemented so
-far.
+real-hardware task timing. As of Milestone 18 - the last purely-software milestone before
+Milestone 17's hardware integration, which is captain-directed and requires physical hardware in
+hand (see [TODO.md](TODO.md)) - the firmware adds `SIMULATION`/`HARDWARE_TEST`/`FLIGHT` build-time
+operating modes (a Kconfig choice) and a `BENCH_TEST` build configuration that `#if`-excludes
+every LEDC call in `firmware/components/actuators/src/pwm_esc_output.c` so no motor-spinning PWM
+signal can be produced in that build (verified by `nm`-inspecting the compiled object, not just
+documented), plus a new `firmware/components/bench_test/` UART console (`BenchTestTask`) with four
+independently-usable bench-bringup commands - continuous sensor/radio streaming, a direct
+single-servo angle command, and a single-motor `esc_test` reachable only in a `HARDWARE_TEST`
+build and gated behind an explicit, exact `CONFIRM` token distinct from the normal arm/throttle
+path. This milestone also wires `actuators_init_safe()` into `main()` for the first time, behind a
+new `CONFIG_BICOPTER_ACTUATORS_ENABLED` gate. See [docs/bench_test.md](docs/bench_test.md) for the
+full writeup, including the recommended real-hardware bring-up sequence Milestone 17 is meant to
+run against — see [TODO.md](TODO.md) for the full roadmap and what's implemented so far.
 
 ## Target vehicle
 
@@ -279,7 +291,11 @@ radio component's pure CRSF CRC8/frame-sync/channel-decode/calibration logic
 component's pure flight-mode-transition/arming-precondition/failsafe-evaluation/actuator-command-
 validation logic (`flight_mode_test`, `arming_test`, `failsafe_test`,
 `actuator_command_check_test`) and the power component's pure battery ADC-conversion logic
-(`battery_convert_test`) — see [docs/safety.md](docs/safety.md) — all built independently of
+(`battery_convert_test`) — see [docs/safety.md](docs/safety.md) — and, as of Milestone 18, the new
+bench_test component's pure UART command-line-parsing logic (`bench_test_command_test`) and the
+BENCH_TEST motor-disable gate's compile-time macro translation, built twice under both
+configurations (`pwm_esc_bench_test_gate_test`, `pwm_esc_bench_test_gate_disabled_test`) — see
+[docs/bench_test.md](docs/bench_test.md) — all built independently of
 ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
 tests link the real static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`);
 `control_allocator_test` additionally links `bicopter_physics` (not just `flight_core`) so its
@@ -318,5 +334,8 @@ ctest --test-dir tests/build --output-on-failure
 - [docs/safety.md](docs/safety.md) — flight-mode state machine and full transition table, arming
   preconditions, every failsafe condition and its default response, and the battery-monitoring
   model/thresholds
+- [docs/bench_test.md](docs/bench_test.md) — the three build-time operating modes, the `BENCH_TEST`
+  motor-disable compile-time guarantee and how it's enforced, the bench-test UART console's four
+  commands and their safety gating, and the recommended real-hardware bring-up sequence
 - [AGENTS.md](AGENTS.md) — structural/convention decisions for engineers and agents working on
   later milestones

@@ -436,9 +436,48 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   including any wiring/mounting/calibration documentation needed to reproduce the build.
   Done when: the vehicle achieves stable controlled flight (or the tethered/bench equivalent
   agreed for first hardware tests).
+  **Requires physical ESP32/MPU6050/BMP581/ESC/servo/battery hardware in hand.** Unlike every
+  milestone completed so far (each buildable, testable, and honestly verified-vs-deferred entirely
+  without hardware), this milestone's actual deliverable — flight, or a tethered/bench equivalent —
+  cannot be produced, faked, or meaningfully simulated without the real vehicle in hand. It is
+  explicitly a **captain-directed** milestone, not one a crewmate can complete without that
+  hardware: it does not get dispatched until real hardware exists, and no amount of additional
+  software work substitutes for it. [docs/bench_test.md](docs/bench_test.md) (Milestone 18)
+  documents the exact bring-up sequence this milestone is meant to run against once that hardware
+  is available.
 
-- [ ] **18. Bench-test tooling**
+- [x] **18. Bench-test tooling**
   Deliverable: `tests/` and/or standalone tooling for bench validation — motor/servo output
   checks, sensor calibration routines, log capture/analysis — usable without full flight.
   Done when: a documented bench procedure exists for validating each subsystem in isolation
   before flight.
+  Done via: three build-time operating modes (`SIMULATION`/`HARDWARE_TEST`/`FLIGHT`, a Kconfig
+  choice — see [docs/bench_test.md](docs/bench_test.md) for the build-time-vs-boot-time-latched
+  safety rationale), with `esc_test` (motor spin) reachable only in a `HARDWARE_TEST` build and
+  gated behind a literal, exact `CONFIRM` token distinct from the normal arm/throttle path. A new
+  `BENCH_TEST` build configuration (`CONFIG_BICOPTER_BENCH_TEST_MOTORS_DISABLED`) makes
+  `firmware/components/actuators/src/pwm_esc_output.c` — the only file that ever calls ESP-IDF's
+  LEDC PWM API for a motor — `#if`-exclude every one of those calls entirely; verified directly by
+  `nm`-inspecting the compiled object (zero `ledc_*` references in a BENCH_TEST build, all four
+  present otherwise), not just documented. A new `firmware/components/bench_test/` component (a
+  minimal custom UART command parser, chosen over ESP-IDF's `esp_console` so the safety-relevant
+  parsing/confirmation logic stays plain, ESP-IDF-free, and host-tested per this project's driver-
+  testing convention) adds a `BenchTestTask` UART console with four independently-usable commands:
+  continuous sensor streaming, continuous radio-command streaming, direct single-servo angle
+  commands, and the gated single-motor `esc_test` (throttle hard-clamped, auto-returns to idle
+  after a configured duration, loudly logs a warning on every invocation). This milestone also
+  wires `actuators_init_safe()` into `main()` for the first time, behind a new
+  `CONFIG_BICOPTER_ACTUATORS_ENABLED` gate (default off, same "no board chosen yet" pattern every
+  other optional-hardware option in this project uses) with placeholder GPIO/pulse-width Kconfig
+  config, so the bench-test console's servo/esc_test commands have real actuator handles to
+  command once a board exists. `idf.py build` succeeds for all three operating modes and for
+  `BENCH_TEST` (combined with `HARDWARE_TEST`, the intended real-usage combination); 68 new
+  passing host-side checks (`tests/bench_test_command_test.c`,
+  `tests/pwm_esc_bench_test_gate_test.c`, `tests/pwm_esc_bench_test_gate_disabled_test.c`) cover
+  the command parser (including every confirmation-token near-miss) and the BENCH_TEST gate-value
+  translation under both configurations. See [docs/bench_test.md](docs/bench_test.md) for the full
+  writeup, including the recommended real-hardware bring-up sequence (propellers off first; sensors
+  before actuators; servos before motors; verify motor/servo direction and control signs; verify
+  failsafe behavior; restrained/tethered first powered test) that Milestone 17 is meant to actually
+  run against. No physical hardware was available in this environment — see docs/bench_test.md's
+  verified-vs-deferred section.

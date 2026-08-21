@@ -10,7 +10,12 @@
 # `safety` component (see ../components/safety and ../../docs/safety.md), safety_state.c/.h now
 # carries a real flight_mode_t (not just a placeholder armed bool), and radio_state.c/.h publishes
 # RadioTask's latest command/health for SafetyTask to consume - the same mutex-protected-struct
-# shape as safety_state.c/.h, for the same reason (see radio_state.h).
+# shape as safety_state.c/.h, for the same reason (see radio_state.h). As of Milestone 18 (see
+# ../../docs/bench_test.md), main.c calls actuators_init_safe() behind the new
+# CONFIG_BICOPTER_ACTUATORS_ENABLED gate and publishes the result via actuators_state.c/.h (no
+# mutex needed - see that header), and bench_test_task.c wires the new `bench_test` component's
+# UART console into real firmware state (sensor sample queue, radio_state.h, actuators_state.h) as
+# a seventh, non-watchdog-registered task.
 idf_component_register(SRCS "main.c"
                              "sensor_task.c"
                              "estimator_task.c"
@@ -20,6 +25,8 @@ idf_component_register(SRCS "main.c"
                              "telemetry_task.c"
                              "safety_task.c"
                              "safety_state.c"
+                             "actuators_state.c"
+                             "bench_test_task.c"
                              "task_util.c"
                         INCLUDE_DIRS "."
-                        REQUIRES sensors radio safety power driver esp_timer)
+                        REQUIRES sensors actuators radio safety power bench_test driver esp_timer)
