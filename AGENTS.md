@@ -112,16 +112,21 @@ single-axis PID with configurable gains, output saturation, clamping/conditional
 anti-windup, and a configurable derivative-on-measurement-vs-error convention — see
 [docs/control.md](docs/control.md)) and `RateController` (three independent `Pid` instances, one
 per body axis, consuming `AttitudeEstimate::angular_velocity_radps` and a desired rate, producing
-a desired body torque). Nothing calls `RateController` yet — `FlightControlTask`
-(`firmware/main/flight_control_task.c`) still only reads/logs `safety_state_t`, and the simulator
-has no control loop wired in either; both remain future wiring work (Milestone 11's attitude
-controller needs to exist to produce `RateController`'s rate-setpoint input first, and Milestone
-13 is where the whole stack first runs closed-loop). `docs/control.md` covers the `Pid`/
-`RateController` design as of Milestone 10; the force/torque model and control-allocation math
-(Milestone 12) must still be *derived* from real vehicle geometry when that milestone lands, not
-invented ahead of time — that geometry (motor arm offsets, tilt-axis convention, thrust/torque
-coefficients) is already recorded in `VehicleParams` and [docs/dynamics.md](docs/dynamics.md) as
-of Milestone 9, so Milestone 12 should consume it rather than re-deriving or duplicating it.
+a desired body torque). As of Milestone 11, `flight_core/control/` also adds `AttitudeController`
+— a stateless proportional quaternion-feedback outer loop (`q_error =
+current.inverse() * desired`; see docs/control.md for why that multiplication order, not the
+reverse, is the one consistent with `Quaternion::integrate()`'s right-multiply body-rate
+convention) converting a desired/current attitude quaternion pair into a desired body rate,
+feeding `RateController::update()`'s `desired_radps` argument unchanged. Nothing calls either
+controller yet — `FlightControlTask` (`firmware/main/flight_control_task.c`) still only
+reads/logs `safety_state_t`, and the simulator has no control loop wired in either; both remain
+future wiring work for Milestone 13, which is where the whole stack first runs closed-loop.
+`docs/control.md` covers the `Pid`/`RateController`/`AttitudeController` design as of Milestone
+11; the force/torque model and control-allocation math (Milestone 12) must still be *derived*
+from real vehicle geometry when that milestone lands, not invented ahead of time — that geometry
+(motor arm offsets, tilt-axis convention, thrust/torque coefficients) is already recorded in
+`VehicleParams` and [docs/dynamics.md](docs/dynamics.md) as of Milestone 9, so Milestone 12
+should consume it rather than re-deriving or duplicating it.
 `docs/estimation.md` covers attitude estimation as of Milestone 8; barometer-based
 altitude/vertical-velocity estimation and simulated sensor noise/bias models are both explicitly
 deferred to later milestones (noted in docs/estimation.md and docs/dynamics.md respectively, not
