@@ -106,3 +106,13 @@ add_executable(bicopter_dynamics_test bicopter_dynamics_test.cpp)
 target_link_libraries(bicopter_dynamics_test bicopter_physics)
 
 add_test(NAME bicopter_dynamics_test COMMAND bicopter_dynamics_test)
+
+add_executable(pid_test pid_test.cpp)
+target_link_libraries(pid_test flight_core)
+
+add_test(NAME pid_test COMMAND pid_test)
+
+add_executable(rate_controller_test rate_controller_test.cpp)
+target_link_libraries(rate_controller_test flight_core)
+
+add_test(NAME rate_controller_test COMMAND rate_controller_test)

@@ -7,9 +7,10 @@
 #
 # Milestone 7 (math/) was the first real source in this library; Milestone 8 (estimation/) is the
 # second. Milestone 9 (vehicle/) adds VehicleParams — pure configuration data, header-only, so it
-# needs an include path but no new .cpp source. control/dynamics/safety remain unimplemented
-# until their respective milestones land (see ../TODO.md). Do not add stub .cpp files for those
-# just to make this configure.
+# needs an include path but no new .cpp source. Milestone 10 (control/) adds the generic Pid
+# building block and RateController. dynamics/safety remain unimplemented until their respective
+# milestones land (see ../TODO.md). Do not add stub .cpp files for those just to make this
+# configure.
 
 cmake_minimum_required(VERSION 3.16)
 project(flight_core CXX)
@@ -19,9 +20,15 @@ add_library(flight_core STATIC
     math/src/mat3.cpp
     math/src/quaternion.cpp
     estimation/src/complementary_filter.cpp
-    # control/...
+    control/src/pid.cpp
+    control/src/rate_controller.cpp
     # dynamics/...
     # safety/...
 )
-target_include_directories(flight_core PUBLIC math/include estimation/include vehicle/include)
+target_include_directories(flight_core PUBLIC
+    math/include
+    estimation/include
+    vehicle/include
+    control/include
+)
 target_compile_features(flight_core PUBLIC cxx_std_17)

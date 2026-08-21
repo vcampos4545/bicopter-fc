@@ -176,11 +176,33 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   (`cmake -S simulator -B simulator/build`) as well as via `tests/`. `idf.py build` still
   succeeds (`firmware/` untouched this milestone).
 
-- [ ] **10. PID / rate controller**
+- [x] **10. PID / rate controller**
   Deliverable: `flight_core/control/` — a rate (angular-velocity) controller (PID or equivalent)
   taking estimator output and rate setpoints to torque/force demands.
   Done when: unit-tested against synthetic rate-error inputs and produces stable, bounded
   output.
+  Done via: `flight_core/control/` — `Pid` (`include/pid.h`, `src/pid.cpp`), a generic single-axis
+  PID with configurable gains, configurable output saturation, clamping (conditional-integration)
+  anti-windup, a configurable derivative-on-measurement (default, avoids setpoint-step "derivative
+  kick") vs. derivative-on-error convention, and an explicit per-call `dt` (never a fixed internal
+  rate — the same `Pid` type will back Milestone 11's attitude loop at a different rate). Built on
+  top of it, `RateController` (`include/rate_controller.h`, `src/rate_controller.cpp`) wraps three
+  independent `Pid` instances (roll/pitch/yaw rate) with zero cross-axis coupling inside the
+  controller itself — `update(desired_radps, current_radps, dt) -> Vec3 torque_nm`, consuming
+  Milestone 8's `AttitudeEstimate::angular_velocity_radps` shape and producing a body torque, not
+  yet a motor/servo command (that's Milestone 12's control allocation). See
+  [docs/control.md](docs/control.md) for the full anti-windup/derivative-convention reasoning and
+  why the default gains are explicitly labeled placeholders (real tuning deferred to Milestone 13's
+  simulator closed loop or real hardware, Milestone 17). `flight_core/CMakeLists.txt` now also
+  builds `control/src/pid.cpp` and `control/src/rate_controller.cpp`.
+  `tests/pid_test.cpp` (39 checks) covers proportional-only response, integral accumulation,
+  anti-windup under saturation (including immediate recovery once the error reverses),
+  derivative-on-measurement vs. derivative-on-error (including the kick the latter produces and
+  the former doesn't), output clamping, and non-positive-`dt` handling.
+  `tests/rate_controller_test.cpp` (27 checks) covers axis independence (an isolated roll/pitch/
+  yaw rate error produces ~zero torque on the other two axes), agreement with an independently-run
+  `Pid` per axis across multiple steps, and `reset()`. No attitude-loop or control-allocation code
+  was added. `idf.py build` still succeeds (`firmware/` untouched this milestone).
 
 - [ ] **11. Attitude controller**
   Deliverable: an attitude (angle) control loop generating rate setpoints for the rate

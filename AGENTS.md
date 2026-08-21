@@ -107,15 +107,25 @@ configures `physics/` as a real subdirectory (standalone-buildable via
 `cmake -S simulator -B simulator/build`); `simulator/sensors/`, `simulator/visualization/`, and
 `simulator/main.cpp` (the interactive `bicopter_sim` executable) remain unimplemented — no
 simulated `Imu`/`Barometer` HAL implementations exist yet, so nothing yet drives `flight_core`'s
-estimator from simulated data. `docs/control.md` remains an intentional stub: the force/torque
-model and control-allocation math must be *derived* from real vehicle geometry in its milestone,
-not invented ahead of time — though as of Milestone 9 that geometry (motor arm offsets, tilt-axis
-convention, thrust/torque coefficients) is now recorded in `VehicleParams` and
-[docs/dynamics.md](docs/dynamics.md), so Milestone 12 should consume it rather than re-deriving
-or duplicating it. `docs/estimation.md` covers attitude estimation as of Milestone 8;
-barometer-based altitude/vertical-velocity estimation and simulated sensor noise/bias models are
-both explicitly deferred to later milestones (noted in docs/estimation.md and docs/dynamics.md
-respectively, not silently missing). See [TODO.md](TODO.md) for the full milestone sequence and
+estimator from simulated data. As of Milestone 10, `flight_core/control/` adds `Pid` (a generic
+single-axis PID with configurable gains, output saturation, clamping/conditional-integration
+anti-windup, and a configurable derivative-on-measurement-vs-error convention — see
+[docs/control.md](docs/control.md)) and `RateController` (three independent `Pid` instances, one
+per body axis, consuming `AttitudeEstimate::angular_velocity_radps` and a desired rate, producing
+a desired body torque). Nothing calls `RateController` yet — `FlightControlTask`
+(`firmware/main/flight_control_task.c`) still only reads/logs `safety_state_t`, and the simulator
+has no control loop wired in either; both remain future wiring work (Milestone 11's attitude
+controller needs to exist to produce `RateController`'s rate-setpoint input first, and Milestone
+13 is where the whole stack first runs closed-loop). `docs/control.md` covers the `Pid`/
+`RateController` design as of Milestone 10; the force/torque model and control-allocation math
+(Milestone 12) must still be *derived* from real vehicle geometry when that milestone lands, not
+invented ahead of time — that geometry (motor arm offsets, tilt-axis convention, thrust/torque
+coefficients) is already recorded in `VehicleParams` and [docs/dynamics.md](docs/dynamics.md) as
+of Milestone 9, so Milestone 12 should consume it rather than re-deriving or duplicating it.
+`docs/estimation.md` covers attitude estimation as of Milestone 8; barometer-based
+altitude/vertical-velocity estimation and simulated sensor noise/bias models are both explicitly
+deferred to later milestones (noted in docs/estimation.md and docs/dynamics.md respectively, not
+silently missing). See [TODO.md](TODO.md) for the full milestone sequence and
 current status.
 
 ## CMake: guard a shared subdirectory before add_subdirectory-ing it
