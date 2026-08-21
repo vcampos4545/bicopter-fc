@@ -4,18 +4,24 @@
 
 Milestone 10 implements the generic `Pid` building block and the `RateController` it's used to
 build. Milestone 11 implements `AttitudeController`, the outer (attitude) loop that converts an
-attitude error into a rate setpoint for `RateController`. Milestone 12 (control allocation, body
-torque/thrust -> per-motor throttle and per-servo tilt angle) remains unimplemented — see
+attitude error into a rate setpoint for `RateController`. Milestone 12 implements
+`ControlAllocator`, converting a desired total thrust and body torque into the vehicle's 4 motor/
+servo commands — the full derivation, its small-angle-linearization simplification, the
+controllability-near-hover findings, and the saturation/prioritization policy are in
+[control_allocation.md](control_allocation.md), not repeated here. Nothing in `firmware/`/
+`simulator/` calls any of `Pid`/`RateController`/`AttitudeController`/`ControlAllocator` yet —
+wiring the full cascade together against real (or simulated) state is Milestone 13's job — see
 [TODO.md](../TODO.md).
 
 All control quantities use the body-frame and units convention from [README.md](../README.md):
-SI units throughout, right-handed body frame with X=forward, Y=right, Z=down. Control allocation
-(Milestone 12) will express its output through the `MotorOutput`/`ServoOutput` hardware-
-abstraction interfaces described in [architecture.md](architecture.md), so the same allocation
-code runs unmodified on `firmware/` and in `simulator/` — that remains true of this milestone's
-code too: `flight_core/control/` has zero ESP-IDF dependency (per [AGENTS.md](../AGENTS.md)'s
-`flight_core` rule) and is exercised identically by `tests/` today and by the simulator once
-Milestone 13 closes the loop.
+SI units throughout, right-handed body frame with X=forward, Y=right, Z=down. Milestone 12's
+`ControlAllocator` expresses its output in the exact normalized units the `MotorOutput`/
+`ServoOutput` hardware-abstraction interfaces described in [architecture.md](architecture.md)
+expect, so the same allocation code will run unmodified on `firmware/` and in `simulator/` once
+Milestone 13 wires it to either — that remains true of this milestone's code too:
+`flight_core/control/` has zero ESP-IDF dependency (per [AGENTS.md](../AGENTS.md)'s `flight_core`
+rule) and is exercised identically by `tests/` today and by the simulator once Milestone 13 closes
+the loop.
 
 ## `Pid`: the generic building block
 
@@ -277,3 +283,39 @@ axes, the same "not physically motivated, just a starting point that behaves san
 placeholder approach `RateController`'s `detail::DefaultRateAxisGains()` used at Milestone 10 — see
 that section above for the full reasoning. Real tuning remains deferred to Milestone 13's
 closed-loop simulator or Milestone 17's real hardware.
+
+## `ControlAllocator`: control allocation
+
+`flight_core/control/include/control_allocator.h` / `src/control_allocator.cpp`. The final stage
+of the cascaded architecture:
+
+```
+desired attitude --> AttitudeController --> desired rate --> RateController --> desired torque
+                                                              (+ a desired total thrust, from a
+                                                               future altitude/throttle source)
+                                                                       |
+                                                                       v
+                                                    ControlAllocator --> motor1/2 throttle,
+                                                                         motor1/2 tilt
+```
+
+`ControlAllocator::allocate(desired_thrust_n, desired_torque_nm)` converts `RateController`'s
+torque output (plus a total-thrust scalar) into the vehicle's 4 actual actuator degrees of
+freedom, in Milestone 5's `MotorOutput`/`ServoOutput` normalized units. This is the mathematical
+inverse of Milestone 9's forward-dynamics model, derived term-by-term from the same geometry
+`bicopter_dynamics.cpp` implements — **not** an independently-invented mixing matrix. The full
+derivation (a small-angle linearization around hover, decoupled into a thrust/roll solve followed
+by a tilt/pitch/yaw solve), the central finding that this vehicle's geometry has no pitch-torque
+authority near hover unless `VehicleParams::center_of_mass_offset_m` has a nonzero vertical
+component, and the documented saturation/prioritization policy (thrust preserved over roll
+accuracy; tilt/pitch/yaw saturate independently) are all in
+[control_allocation.md](control_allocation.md) — deliberately not duplicated here, since that
+document's derivation needs to be read alongside `bicopter_dynamics.cpp`'s equations, not
+`control.md`'s.
+
+Like `AttitudeController`, `ControlAllocator` is stateless (a pure function of its
+constructor-supplied `VehicleParams`/`ControlAllocatorConfig` and each call's inputs) — no
+`reset()`. `tests/control_allocator_test.cpp` (144 checks) includes the milestone's most important
+test: allocator output round-tripped through Milestone 9's real `computeStateDerivative()` to
+confirm the derived inverse actually reproduces the requested thrust/torque, not just a
+plausible-looking one.

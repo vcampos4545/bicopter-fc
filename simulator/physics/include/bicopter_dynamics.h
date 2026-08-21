@@ -8,6 +8,7 @@
 #pragma once
 
 #include "actuator_command.h"
+#include "motor_geometry.h"
 #include "rigid_body_state.h"
 #include "vehicle_params.h"
 
@@ -23,11 +24,11 @@ struct StateDerivative {
     Vec3 angular_acceleration_radps2 = Vec3::Zero();   // = d(angular_velocity)/dt, body frame
 };
 
-// Direction (unit vector) of one motor's thrust vector in BODY frame at the given tilt angle: a
-// rotation of tilt_rad about body +Y (right-hand rule) applied to the zero-tilt thrust axis
-// (0, 0, -1) — straight "up" in this project's Z-down body frame. See docs/dynamics.md's
-// "Tilt-vectoring geometry" section for the derivation and sign convention.
-Vec3 motorThrustDirectionBody(float tilt_rad);
+// motorThrustDirectionBody() now lives in flight_core/vehicle/include/motor_geometry.h (moved
+// there at Milestone 12 so flight_core/control/'s ControlAllocator can reuse the exact same
+// function — see that header's comment and docs/control_allocation.md). Re-exposed here via the
+// #include above so existing callers of this header (e.g. tests/bicopter_dynamics_test.cpp) are
+// unaffected.
 
 // Computes the state derivative for the given state, vehicle parameters, and actuator command,
 // per m*v_dot=F and I*omega_dot + omega x (I*omega) = tau (solved for omega_dot assuming a

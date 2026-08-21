@@ -58,17 +58,6 @@ MotorEffect computeMotorEffect(const MotorParams& motor, const Vec3& center_of_m
 
 } // namespace
 
-Vec3 motorThrustDirectionBody(float tilt_rad)
-{
-    // Rotation of tilt_rad about body +Y (right-hand rule) applied to (0, 0, -1):
-    //   x' =  0*cos(t) + (-1)*sin(t) = -sin(t)
-    //   y' =  0
-    //   z' = -0*sin(t) + (-1)*cos(t) = -cos(t)
-    // At tilt=0 this is (0,0,-1) — straight up. Positive tilt rotates the thrust vector toward
-    // -X (aft). See docs/dynamics.md's "Tilt-vectoring geometry" section.
-    return Vec3(-std::sin(tilt_rad), 0.0f, -std::cos(tilt_rad));
-}
-
 StateDerivative computeStateDerivative(const RigidBodyState& state, const VehicleParams& params,
                                         const ActuatorCommand& command)
 {
