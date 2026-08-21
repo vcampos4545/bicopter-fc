@@ -8,20 +8,20 @@ attitude error into a rate setpoint for `RateController`. Milestone 12 implement
 `ControlAllocator`, converting a desired total thrust and body torque into the vehicle's 4 motor/
 servo commands — the full derivation, its small-angle-linearization simplification, the
 controllability-near-hover findings, and the saturation/prioritization policy are in
-[control_allocation.md](control_allocation.md), not repeated here. Nothing in `firmware/`/
-`simulator/` calls any of `Pid`/`RateController`/`AttitudeController`/`ControlAllocator` yet —
-wiring the full cascade together against real (or simulated) state is Milestone 13's job — see
-[TODO.md](../TODO.md).
+[control_allocation.md](control_allocation.md), not repeated here. As of Milestone 13,
+`simulator/sim_loop/`'s `SimLoop` calls the full cascade (`Pid`/`RateController`/
+`AttitudeController`/`ControlAllocator`) against Milestone 9's simulated dynamics — see
+[simulation.md](simulation.md). Wiring the same cascade into firmware's `FlightControlTask` for
+real hardware remains unstarted.
 
 All control quantities use the body-frame and units convention from [README.md](../README.md):
 SI units throughout, right-handed body frame with X=forward, Y=right, Z=down. Milestone 12's
 `ControlAllocator` expresses its output in the exact normalized units the `MotorOutput`/
 `ServoOutput` hardware-abstraction interfaces described in [architecture.md](architecture.md)
-expect, so the same allocation code will run unmodified on `firmware/` and in `simulator/` once
-Milestone 13 wires it to either — that remains true of this milestone's code too:
+expect, so the same allocation code runs unmodified in `simulator/` (Milestone 13) and will on
+`firmware/` once that wiring lands — that remains true of this milestone's code too:
 `flight_core/control/` has zero ESP-IDF dependency (per [AGENTS.md](../AGENTS.md)'s `flight_core`
-rule) and is exercised identically by `tests/` today and by the simulator once Milestone 13 closes
-the loop.
+rule) and is exercised identically by `tests/` and by the simulator's closed loop.
 
 ## `Pid`: the generic building block
 
@@ -137,6 +137,15 @@ publicly-settable config structs. Any caller (a test, the simulator, eventually 
 its own values; the placeholder defaults exist only so `RateController()`'s default constructor
 produces something usable for tests today, not as an assertion that these numbers belong on a real
 or simulated vehicle. `AttitudeControllerConfig` below follows the identical convention.
+
+**Update, Milestone 13:** the closed-loop simulator these gains were deferred to now exists —
+`simulator/sim_loop/`'s `SimLoop`, see [docs/simulation.md](docs/simulation.md). The placeholder
+gains documented above and below were validated against it, not retuned: once that milestone's own
+sensor-fusion/observability issues were fixed (documented in docs/simulation.md, not a control-gain
+problem), the existing `RateController`/`AttitudeController` defaults converged every tested case
+with no oscillation or saturation-driven instability. They remain labeled placeholders because
+they are still only simulator-validated, not hardware-validated — Milestone 17 is still the bar
+for that — but "untested against any real or simulated plant" no longer applies.
 
 ## `AttitudeController`: the attitude (angle) control loop
 

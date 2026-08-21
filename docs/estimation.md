@@ -137,6 +137,19 @@ initial error specifically to test what the filter *can* correct; a nonzero init
 would persist indefinitely by design, which is expected and not a defect to "fix" without adding a
 yaw-reference sensor.
 
+**Update, Milestone 13: the same blindness extends to roll/pitch during hover.** Wiring this
+estimator into a real closed loop against Milestone 9's dynamics (`simulator/sim_loop/`) surfaced
+a broader version of this finding: because this vehicle's thrust is generated along a body-fixed
+axis, the accelerometer's reading during hover is `F_thrust_body / mass` **exactly**, independent
+of the vehicle's true orientation — not just noisy or approximately gravity-aligned, but
+structurally uninformative about *any* attitude axis, not only yaw. Accelerometer correction
+remains valid for the stationary, non-thrusting scenario this section's tests already exercise;
+it is provably counter-productive once the vehicle is airborne and thrust-bearing. See
+[docs/simulation.md](docs/simulation.md#why-the-estimator-runs-with-zero-accelerometer-correction-gain-during-flight)
+for the full derivation and how `SimLoop` configures `Kp = 0` (pure gyro integration) during
+flight as a result — this estimator's own default `Kp` is unchanged, since it remains correct for
+the scenario it was designed and tested against.
+
 ## Timestamps and dt
 
 `ImuSample::timestamp_s` is a real timestamp (seconds, monotonic, arbitrary epoch), not an

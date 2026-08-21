@@ -101,15 +101,18 @@ imposes.
 ### Simulator execution model
 
 The simulator does not run FreeRTOS. It steps the physics model at a fixed timestep and, on
-each step, presents that instant's state through the `Imu`/`Barometer`/battery-monitor
-interfaces, calls `flight_core` exactly as `firmware/`'s tasks would (estimator step, then
-control step, at whatever relative rates milestone 13 settles on), and applies the resulting
-`MotorOutput`/`ServoOutput` commands back into the physics model for the next step. This keeps
-the *interfaces* identical between targets while accepting that the *scheduling* is necessarily
-different (real concurrency vs. a deterministic single-threaded loop) — task timing behavior
-itself is only validated in QEMU as of milestone 6 (see below); real-hardware scheduling
-behavior (actual I2C/PWM transaction time, real interrupt latency) remains unverified until
-milestone 17.
+each step, presents that instant's state through a simulated `Imu` (no `Barometer`/battery-monitor
+implementation yet — attitude-only, matching `flight_core/estimation/`'s scope), calls
+`flight_core` exactly as `firmware/`'s tasks would (estimator step, then, at a decimated rate, a
+control step), and applies the resulting `MotorOutput`/`ServoOutput`-shaped commands back into the
+physics model for the next step. Landed at Milestone 13 as `simulator/sim_loop/`'s `SimLoop`,
+running the estimator/IMU-sample step at `SensorTask`'s real 500 Hz rate and the attitude/rate/
+allocation control step at `FlightControlTask`'s real 250 Hz rate (zero-order-hold on the actuator
+command between control steps) — see [simulation.md](simulation.md). This keeps the *interfaces*
+identical between targets while accepting that the *scheduling* is necessarily different (real
+concurrency vs. a deterministic single-threaded loop) — task timing behavior itself is only
+validated in QEMU as of milestone 6 (see below); real-hardware scheduling behavior (actual
+I2C/PWM transaction time, real interrupt latency) remains unverified until milestone 17.
 
 ## FreeRTOS tasks
 

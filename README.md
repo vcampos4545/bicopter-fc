@@ -7,7 +7,7 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 12 (control allocation) is complete. `firmware/` is a real ESP-IDF
+**Status:** Milestone 13 (simulator closed-loop stabilization) is complete. `firmware/` is a real ESP-IDF
 v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
@@ -44,12 +44,25 @@ term-by-term (a small-angle linearization around hover) from the exact same geom
 invented mixing matrix — see [docs/control_allocation.md](docs/control_allocation.md) for the
 full derivation, including this milestone's central finding that the vehicle's geometry as
 currently parameterized has no pitch-torque authority near hover unless
-`VehicleParams::center_of_mass_offset_m` has a nonzero vertical component. Nothing in
-`firmware/`/`simulator/` calls into `flight_core/estimation/` or `flight_core/control/` yet —
-wiring the estimator into `EstimatorTask` is a noted follow-up (see docs/estimation.md), and
-wiring the full estimator + attitude/rate/allocation stack into a closed loop is Milestone 13's
-job. No real hardware was available to verify actual I2C/PWM transactions or real-hardware task
-timing — see [TODO.md](TODO.md) for the full roadmap and what's implemented so far.
+`VehicleParams::center_of_mass_offset_m` has a nonzero vertical component. As of Milestone 13,
+`simulator/sensors/` and `simulator/sim_loop/` close that loop end to end in simulation:
+`SimulatedImu` synthesizes noise/bias-corrupted `ImuSample`s from Milestone 9's ground-truth
+`RigidBodyState`, and `SimLoop` wires estimator -> `AttitudeController` -> `RateController` ->
+`ControlAllocator` -> Milestone 9 dynamics into one steppable closed loop, run over simulated time
+at `SensorTask`/`FlightControlTask`'s real 500 Hz/250 Hz cadence split. `tests/sim_loop_test.cpp`
+demonstrates genuine convergence (attitude error dropping below a documented tolerance and staying
+there, not just touching zero once) from disturbed initial attitudes, both for the default
+(zero-CoM-offset) vehicle's roll/yaw authority and, in an additional case, for pitch under a
+nonzero-CoM-offset configuration. Two real, structural findings surfaced during this work — why
+the estimator runs with zero accelerometer correction gain during flight, and why the vehicle
+needs nonzero drag to bound gyroscopic cross-axis coupling into the (structurally unauthoritative)
+pitch axis — are fully documented in [docs/simulation.md](docs/simulation.md), along with
+confirmation that Milestones 10-11's placeholder control gains converge as-is, without retuning.
+Wiring this same stack into `firmware/`'s `EstimatorTask`/`FlightControlTask` for real hardware
+remains a noted follow-up (see docs/estimation.md and docs/simulation.md) — Milestone 13 closes
+the loop in the simulator only. No real hardware was available to verify actual I2C/PWM
+transactions or real-hardware task timing — see [TODO.md](TODO.md) for the full roadmap and what's
+implemented so far.
 
 ## Target vehicle
 
@@ -169,16 +182,18 @@ cmake --build flight_core/build
 
 ### simulator/ (desktop physics simulator)
 
-`simulator/physics/` (Milestone 9) is a real, unit-tested rigid-body forward-dynamics model —
-see [docs/dynamics.md](docs/dynamics.md). `simulator/sensors/`/`simulator/visualization/` and the
-interactive `bicopter_sim` executable (`simulator/main.cpp`) remain unimplemented — a smoke-test
-executable was judged unnecessary given the automated test coverage under `tests/`, so building
-`simulator/` standalone currently produces just the `bicopter_physics` library, not a runnable
-program:
+`simulator/physics/` (Milestone 9) is a real, unit-tested rigid-body forward-dynamics model — see
+[docs/dynamics.md](docs/dynamics.md). As of Milestone 13, `simulator/sensors/` (`SimulatedImu`)
+and `simulator/sim_loop/` (`SimLoop`, the estimator -> attitude/rate control -> allocation ->
+dynamics closed loop) are real too, and `simulator/main.cpp` builds as the interactive
+`bicopter_sim` executable — a minimal text-trace demo of closed-loop stabilization; see
+[docs/simulation.md](docs/simulation.md). `simulator/visualization/` remains unimplemented — a
+full graphical visualization is out of scope for Milestone 13 (not one of the 18 numbered items).
 
 ```sh
 cmake -S simulator -B simulator/build
-cmake --build simulator/build   # builds libbicopter_physics.a; no bicopter_sim executable yet
+cmake --build simulator/build
+./simulator/build/bicopter_sim   # text-trace demo of closed-loop stabilization
 ```
 
 ### tests/
@@ -188,14 +203,17 @@ logic (MPU6050 and BMP581), the actuators component's pure clamping/pulse-mappin
 ESC/servo), `firmware/main/`'s one piece of pure task logic (SensorTask's barometer-read
 decimation check), `flight_core/math/`'s vector/matrix/quaternion library,
 `flight_core/estimation/`'s complementary-filter attitude estimator (Milestone 8),
-`simulator/physics/`'s rigid-body dynamics model (Milestone 9), and `flight_core/control/`'s
+`simulator/physics/`'s rigid-body dynamics model (Milestone 9), `flight_core/control/`'s
 `Pid` building block, `RateController` (Milestone 10), `AttitudeController` (Milestone 11), and
-`ControlAllocator` (Milestone 12) — all built independently of ESP-IDF via plain CMake/CTest. The
-`flight_core` and `bicopter_physics` tests link the real static libraries (via `add_subdirectory`,
-see `tests/CMakeLists.txt`); `control_allocator_test` additionally links `bicopter_physics` (not
-just `flight_core`) so its round-trip checks can call Milestone 9's real forward-dynamics function
-directly; the firmware driver tests still compile ESP-IDF-free `.c` sources directly by relative
-path, per [AGENTS.md](AGENTS.md#driver-testing-convention).
+`ControlAllocator` (Milestone 12), and — as of Milestone 13 — `simulator/sim_loop/`'s full
+closed-loop convergence tests (`sim_loop_test`, see [docs/simulation.md](docs/simulation.md)) —
+all built independently of ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
+tests link the real static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`);
+`control_allocator_test` additionally links `bicopter_physics` (not just `flight_core`) so its
+round-trip checks can call Milestone 9's real forward-dynamics function directly; `sim_loop_test`
+links `bicopter_sim_loop`, which itself pulls in `bicopter_physics`, `bicopter_sim_sensors`, and
+`flight_core`; the firmware driver tests still compile ESP-IDF-free `.c` sources directly by
+relative path, per [AGENTS.md](AGENTS.md#driver-testing-convention).
 
 ```sh
 cmake -S tests -B tests/build
@@ -217,5 +235,8 @@ ctest --test-dir tests/build --output-on-failure
 - [docs/estimation.md](docs/estimation.md) — attitude estimator algorithm and derivation
 - [docs/dynamics.md](docs/dynamics.md) — rigid-body dynamics model, vehicle-geometry assumptions,
   and integration scheme (`simulator/physics/`, `flight_core/vehicle/`)
+- [docs/simulation.md](docs/simulation.md) — closed-loop wiring (`simulator/sim_loop/`), the
+  simulated IMU (`simulator/sensors/`), convergence criteria, and this milestone's findings on
+  accelerometer observability during hover and gyroscopic pitch coupling
 - [AGENTS.md](AGENTS.md) — structural/convention decisions for engineers and agents working on
   later milestones

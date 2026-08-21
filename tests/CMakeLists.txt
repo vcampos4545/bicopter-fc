@@ -26,6 +26,8 @@ set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/main)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../flight_core flight_core-build)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../simulator/physics simulator_physics-build)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../simulator/sensors simulator_sensors-build)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../simulator/sim_loop simulator_sim_loop-build)
 
 add_executable(mpu6050_convert_test
     mpu6050_convert_test.c
@@ -131,3 +133,11 @@ add_executable(control_allocator_test control_allocator_test.cpp)
 target_link_libraries(control_allocator_test bicopter_physics flight_core)
 
 add_test(NAME control_allocator_test COMMAND control_allocator_test)
+
+# sim_loop_test links bicopter_sim_loop (which itself already links bicopter_physics,
+# bicopter_sim_sensors, and flight_core) for Milestone 13's closed-loop convergence tests -- see
+# ../docs/simulation.md and simulator/sim_loop/include/sim_loop.h.
+add_executable(sim_loop_test sim_loop_test.cpp)
+target_link_libraries(sim_loop_test bicopter_sim_loop)
+
+add_test(NAME sim_loop_test COMMAND sim_loop_test)
