@@ -96,11 +96,26 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   available in this environment (same constraint as every milestone so far - see
   docs/hardware.md).
 
-- [ ] **7. Math library**
+- [x] **7. Math library**
   Deliverable: `flight_core/math/` — vectors, quaternions/rotations, and any numerical utilities
   the estimator and controllers need, platform-independent and unit-tested.
   Done when: the library has test coverage for rotation composition, normalization, and the
   operations later milestones depend on.
+  Done via: `flight_core/math/` (`vec3.h/.cpp`, `mat3.h/.cpp`, `quaternion.h/.cpp`) — a `Vec3`
+  (add/subtract/scale/dot/cross/normalize), a fixed 3x3 `Mat3` (matrix-vector/matrix-matrix
+  multiply, transpose, `FromDiagonal` for an inertia tensor), and a `Quaternion` (identity,
+  Hamilton-product multiplication, conjugate/inverse, normalization, exponential-map body-rate
+  integration, ZYX-Euler and rotation-matrix conversion including a documented gimbal-lock
+  convention) — all pure C++17, zero ESP-IDF/OS dependency, `float`-precision throughout. See
+  [docs/math.md](docs/math.md) for the full quaternion/Euler-sequence/axis-convention writeup
+  reconciling this with README.md's body-frame convention. `flight_core/CMakeLists.txt` now
+  builds a real static library (`add_library(flight_core STATIC ...)`, `cxx_std_17`); `tests/`
+  links it in via `add_subdirectory` and adds `vec3_test.cpp`/`mat3_test.cpp`/
+  `quaternion_test.cpp` — 92 passing checks across 9 CTest suites total, including property tests
+  ("integrate a constant angular velocity for a known time" and "Euler round-trip, with the
+  pitch=+-90 gimbal-lock case tested and documented separately"). `idf.py build` still succeeds
+  (firmware/ untouched this milestone); no estimator, controller, or dynamics-simulation logic was
+  added.
 
 - [ ] **8. State estimator**
   Deliverable: `flight_core/estimation/` — an attitude (and altitude) estimator fusing IMU and

@@ -76,26 +76,28 @@ output drivers (`tests/pwm_esc_convert_test.c`, `tests/servo_convert_test.c`,
 
 ## What's real vs. stub right now
 
-As of Milestone 6: `firmware/` is a real, buildable ESP-IDF project (see below) whose `main/` now
-runs six FreeRTOS tasks (SensorTask, EstimatorTask, FlightControlTask, RadioTask, TelemetryTask,
+As of Milestone 7: `firmware/` is a real, buildable ESP-IDF project (see below) whose `main/` runs
+six FreeRTOS tasks (SensorTask, EstimatorTask, FlightControlTask, RadioTask, TelemetryTask,
 SafetyTask) at documented priorities/periods (`firmware/main/task_config.h`,
 [docs/architecture.md](docs/architecture.md#freertos-tasks)), with a queue, a task notification,
 an `esp_timer`, a mutex, and the task watchdog wired between them. Task *bodies* are still stub/
 no-op logic — no estimation, control-loop math, or actuator-driving logic exists in any task yet;
-that is milestones 7-12's job. `SensorTask` is the one exception that reaches real driver code: it
+that is milestones 8-12's job. `SensorTask` is the one exception that reaches real driver code: it
 calls the real MPU6050/BMP581 driver interfaces from `firmware/components/sensors/` behind a new
 `CONFIG_BICOPTER_SENSORS_ENABLED` Kconfig option (default off, since no board is chosen yet) and
 runs gracefully without hardware when it's off. `actuators_init_safe()`
 (`firmware/components/actuators/`) is still not called from `main/` — it needs a per-board PWM
 pin config that doesn't exist yet (see [docs/hardware.md](docs/hardware.md)'s open ESC/servo pin
 items); the natural call site is documented in `firmware/main/main.c` for whichever milestone
-finalizes the board config. No radio code exists yet. `flight_core/CMakeLists.txt` and
-`simulator/CMakeLists.txt` are still non-functional placeholders (commented-out build wiring) —
-do not expect either to configure or build yet. `docs/control.md` and `docs/estimation.md` are
-intentionally stubs: the force/torque model, control-allocation math, and attitude-estimation
-algorithm must be *derived* from real vehicle geometry/sensor data in their respective milestones,
-not invented ahead of time. See [TODO.md](TODO.md) for the full milestone sequence and current
-status.
+finalizes the board config. No radio code exists yet. `flight_core/CMakeLists.txt` now builds a
+real static library — `flight_core/math/` (vectors, quaternions, small matrices; see
+[docs/math.md](docs/math.md)) is the only real content so far, nothing in `firmware/` or
+`simulator/` consumes it yet. `simulator/CMakeLists.txt` is still a non-functional placeholder
+(commented-out build wiring) — do not expect it to configure or build yet. `docs/control.md` and
+`docs/estimation.md` are intentionally stubs: the force/torque model, control-allocation math, and
+attitude-estimation algorithm must be *derived* from real vehicle geometry/sensor data in their
+respective milestones, not invented ahead of time. See [TODO.md](TODO.md) for the full milestone
+sequence and current status.
 
 ## Firmware toolchain
 
