@@ -89,14 +89,22 @@ runs gracefully without hardware when it's off. `actuators_init_safe()`
 (`firmware/components/actuators/`) is still not called from `main/` — it needs a per-board PWM
 pin config that doesn't exist yet (see [docs/hardware.md](docs/hardware.md)'s open ESC/servo pin
 items); the natural call site is documented in `firmware/main/main.c` for whichever milestone
-finalizes the board config. No radio code exists yet. `flight_core/CMakeLists.txt` now builds a
-real static library — `flight_core/math/` (vectors, quaternions, small matrices; see
-[docs/math.md](docs/math.md)) is the only real content so far, nothing in `firmware/` or
-`simulator/` consumes it yet. `simulator/CMakeLists.txt` is still a non-functional placeholder
-(commented-out build wiring) — do not expect it to configure or build yet. `docs/control.md` and
-`docs/estimation.md` are intentionally stubs: the force/torque model, control-allocation math, and
-attitude-estimation algorithm must be *derived* from real vehicle geometry/sensor data in their
-respective milestones, not invented ahead of time. See [TODO.md](TODO.md) for the full milestone
+finalizes the board config. No radio code exists yet. `flight_core/CMakeLists.txt` builds a real
+static library — `flight_core/math/` (vectors, quaternions, small matrices; see
+[docs/math.md](docs/math.md), Milestone 7) and, as of Milestone 8, `flight_core/estimation/` (a
+Mahony-style nonlinear complementary-filter attitude estimator behind the `AttitudeEstimator`
+interface, see [docs/estimation.md](docs/estimation.md)) are real content. Nothing in `firmware/`
+or `simulator/` consumes `flight_core` yet — `EstimatorTask` (`firmware/main/estimator_task.c`)
+still only logs/discards each sensor sample; wiring it to actually call
+`ComplementaryFilterEstimator` is a noted follow-up (needs `flight_core` wired as an ESP-IDF
+component plus a C/C++ boundary adapter converting `imu_reading_t`'s microsecond timestamps to
+`ImuSample`'s SI-seconds ones — see docs/estimation.md's "Firmware wiring" section), not yet done.
+`simulator/CMakeLists.txt` is still a non-functional placeholder (commented-out build wiring) — do
+not expect it to configure or build yet. `docs/control.md` remains an intentional stub: the
+force/torque model and control-allocation math must be *derived* from real vehicle geometry in its
+milestone, not invented ahead of time. `docs/estimation.md` covers attitude estimation as of
+Milestone 8; barometer-based altitude/vertical-velocity estimation is explicitly deferred to a
+later milestone (noted there, not silently missing). See [TODO.md](TODO.md) for the full milestone
 sequence and current status.
 
 ## Firmware toolchain
