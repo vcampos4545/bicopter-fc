@@ -7,7 +7,7 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 14 (ESP-NOW radio) is complete. `firmware/` is a real ESP-IDF
+**Status:** Milestone 15 (CRSF RC receiver) is complete. `firmware/` is a real ESP-IDF
 v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
@@ -77,9 +77,23 @@ lost link. No physical ESP32 pair was available to verify real over-the-air deli
 loss/RSSI, but `idf.py build` was confirmed to succeed with the radio option both off and on (a
 real build against ESP-IDF's `esp_wifi`/`esp_now` libraries, not review alone), and every piece of
 pure packet logic has real passing host-side tests — see [docs/radio.md](docs/radio.md) for the
-full packet format, callback/task-context writeup, and pairing procedure. No real hardware was
-available to verify actual I2C/PWM/radio transactions or real-hardware task timing — see
-[TODO.md](TODO.md) for the full roadmap and what's implemented so far.
+full packet format, callback/task-context writeup, and pairing procedure. As of Milestone 15,
+`firmware/components/radio/` also has a second concrete `Radio` implementation: CRSF, decoding a
+UART-connected RC receiver's `RC_CHANNELS_PACKED` frames (real CRC8/DVB-S2 validation, byte-level
+frame sync, 11-bit channel unpacking) into the same `radio_command_t` shape ESP-NOW produces, with
+configurable channel-to-function mapping and endpoint/center calibration. CRSF was chosen over
+SBUS specifically because classic SBUS carries no CRC/checksum field at all while CRSF does — this
+milestone's explicit requirement — see [docs/radio.md](docs/radio.md) for the full protocol-choice
+writeup, including the finding that SBUS's usual inverted-UART objection doesn't actually hold on
+this project's ESP32 target. Uses ESP-IDF's UART driver in interrupt/ring-buffer mode, not
+busy-polling; `radio.h` required no interface changes. `firmware/main/radio_task.c` wires CRSF in
+as a build-time alternative to ESP-NOW (mutually exclusive, enforced by a `#error` guard confirmed
+to fire). No physical CRSF receiver was available to verify real channel values/timing, but
+`idf.py build` was confirmed to succeed with the CRSF option off, on, and to fail loudly with both
+radio options on, and the pure frame/channel logic has 140 passing host-side tests — see
+[docs/radio.md](docs/radio.md) for the full writeup. No real hardware was available to verify
+actual I2C/PWM/radio transactions or real-hardware task timing — see [TODO.md](TODO.md) for the
+full roadmap and what's implemented so far.
 
 ## Target vehicle
 
@@ -95,7 +109,8 @@ than hardcoded (see [docs/hardware.md](docs/hardware.md)).
   [docs/hardware.md](docs/hardware.md#bmp581-milestone-4)); the estimator must not be coupled to
   a specific part (see [docs/estimation.md](docs/estimation.md))
 - A LiPo battery with voltage/current monitoring
-- A future radio link (ESP-NOW first, conventional RC receiver later)
+- A radio link — ESP-NOW (Milestone 14) and CRSF RC receiver (Milestone 15), selectable at build
+  time
 - No GPS initially
 
 ## Architecture summary
@@ -225,7 +240,9 @@ decimation check), `flight_core/math/`'s vector/matrix/quaternion library,
 `ControlAllocator` (Milestone 12), — as of Milestone 13 — `simulator/sim_loop/`'s full
 closed-loop convergence tests (`sim_loop_test`, see [docs/simulation.md](docs/simulation.md)), and
 — as of Milestone 14 — the radio component's pure packet-format/sequence-staleness/packet-loss
-logic (`radio_packet_test`, see [docs/radio.md](docs/radio.md)) — all built independently of
+logic (`radio_packet_test`, see [docs/radio.md](docs/radio.md)), and — as of Milestone 15 — the
+radio component's pure CRSF CRC8/frame-sync/channel-decode/calibration logic
+(`crsf_frame_test`, see [docs/radio.md](docs/radio.md)) — all built independently of
 ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
 tests link the real static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`);
 `control_allocator_test` additionally links `bicopter_physics` (not just `flight_core`) so its
@@ -257,7 +274,9 @@ ctest --test-dir tests/build --output-on-failure
 - [docs/simulation.md](docs/simulation.md) — closed-loop wiring (`simulator/sim_loop/`), the
   simulated IMU (`simulator/sensors/`), convergence criteria, and this milestone's findings on
   accelerometer observability during hover and gyroscopic pitch coupling
-- [docs/radio.md](docs/radio.md) — `Radio` HAL interface, ESP-NOW packet format, the
-  callback/task-context split, packet-loss/staleness tracking, and pairing procedure
+- [docs/radio.md](docs/radio.md) — `Radio` HAL interface, ESP-NOW packet format and pairing
+  procedure, CRSF frame format/protocol-choice rationale/channel-mapping and calibration
+  procedure, both backends' callback-or-driver/task-context splits, and packet-loss/staleness
+  tracking
 - [AGENTS.md](AGENTS.md) — structural/convention decisions for engineers and agents working on
   later milestones

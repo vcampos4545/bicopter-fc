@@ -20,7 +20,10 @@
 # tracking) has zero ESP-IDF dependency by design, so radio_packet_test.c compiles it directly the
 # same way mpu6050_convert_test.c does. The actual ESP-NOW Wi-Fi calls
 # (firmware/components/radio/src/esp_now_radio.c) are hardware-dependent and not host-testable --
-# see docs/radio.md.
+# see docs/radio.md. Milestone 15 adds crsf_frame.c (CRC8, frame sync, RC_CHANNELS_PACKED
+# decoding, channel mapping, loss estimate) the same way -- crsf_frame_test.c compiles it directly.
+# The actual UART driver calls (firmware/components/radio/src/crsf_radio.c) are likewise
+# hardware-dependent and not host-testable.
 
 cmake_minimum_required(VERSION 3.16)
 project(bicopter_fc_tests C CXX)
@@ -100,6 +103,15 @@ target_include_directories(radio_packet_test PRIVATE ${RADIO_DIR}/include)
 target_link_libraries(radio_packet_test m)
 
 add_test(NAME radio_packet_test COMMAND radio_packet_test)
+
+add_executable(crsf_frame_test
+    crsf_frame_test.c
+    ${RADIO_DIR}/src/crsf_frame.c
+)
+target_include_directories(crsf_frame_test PRIVATE ${RADIO_DIR}/include)
+target_link_libraries(crsf_frame_test m)
+
+add_test(NAME crsf_frame_test COMMAND crsf_frame_test)
 
 add_executable(vec3_test vec3_test.cpp)
 target_link_libraries(vec3_test flight_core)

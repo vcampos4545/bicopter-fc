@@ -171,8 +171,31 @@ deciding what to *do* about it. No physical ESP32 pair was available in this env
 over-the-air packet delivery/latency/loss/RSSI remain unverified — `idf.py build` was confirmed to
 succeed with `CONFIG_BICOPTER_RADIO_ENABLED` both off and on (a real build against ESP-IDF's
 `esp_wifi`/`esp_now` libraries), and every piece of pure packet logic has real host-side tests
-(`tests/radio_packet_test.c`). See [TODO.md](TODO.md) for the full milestone sequence and current
-status.
+(`tests/radio_packet_test.c`). As of Milestone 15, `firmware/components/radio/` also has
+`crsf_frame.c/.h` (pure CRC8/DVB-S2, byte-level frame sync, `RC_CHANNELS_PACKED` decode, and
+channel-to-command calibration, ESP-IDF-free by design — deliberately does not include `radio.h`
+since that header transitively needs `esp_err.h`; it defines its own `crsf_command_t` mirroring
+`radio_command_t`'s fields instead, the same reason `radio_packet.h` has its own
+`radio_command_packet_t` rather than sharing `radio.h`'s type) and `crsf_radio.c/.h` (the second
+concrete `Radio` implementation, using ESP-IDF's UART driver in interrupt/ring-buffer mode via
+`uart_driver_install()`, not busy-polling). CRSF was chosen over SBUS specifically because classic
+SBUS carries no CRC/checksum field at all (only start/end-byte framing) while CRSF has a real
+CRC8 — this milestone's explicit requirement — a genuine protocol-choice finding documented in
+[docs/radio.md](docs/radio.md), not a detail to silently work around. Unlike ESP-NOW's receive
+callback (code this project wrote and had to keep minimal by hand), the UART interrupt/ring-buffer
+handoff here is entirely ESP-IDF's own UART driver; `crsf_radio_process_pending()` (called once per
+`RadioTask` cycle, same pattern as ESP-NOW) does all real work in that task's own context, never in
+driver-internal code. `firmware/main/radio_task.c` wires CRSF in as a build-time either/or
+alternative to ESP-NOW behind `CONFIG_BICOPTER_CRSF_RADIO_ENABLED`, with a `#error` guard (confirmed
+to actually fire) if both radio options are enabled at once — only one backs `RadioTask`'s single
+`radio_t` at a time until a real board decides otherwise. `radio_is_stale()` is reused unchanged for
+staleness; packet-loss is estimated from elapsed time against a configured nominal frame period
+since CRSF carries no sequence number (a coarser, documented approximation of ESP-NOW's exact
+sequence-gap figure). No `radio.h` changes were needed. No physical CRSF receiver was available in
+this environment — `idf.py build` was confirmed to succeed with
+`CONFIG_BICOPTER_CRSF_RADIO_ENABLED` off (default) and on, and to fail loudly (not silently pick a
+backend) with both radio options on; `tests/crsf_frame_test.c` (140 checks) covers the pure logic.
+See [TODO.md](TODO.md) for the full milestone sequence and current status.
 
 ## CMake: guard a shared subdirectory before add_subdirectory-ing it
 

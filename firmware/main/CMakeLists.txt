@@ -3,7 +3,9 @@
 # genuinely cross-task mutex-protected state (see safety_state.h); task_util.c/.h is the one piece
 # of pure logic pulled out for host testing (see ../../tests/task_util_test.c). As of Milestone 14,
 # radio_task.c wires in the real ESP-NOW `radio` component (see ../components/radio and
-# ../../docs/radio.md) behind CONFIG_BICOPTER_RADIO_ENABLED.
+# ../../docs/radio.md) behind CONFIG_BICOPTER_RADIO_ENABLED. As of Milestone 15, radio_task.c also
+# wires in the CRSF RC-receiver backend behind CONFIG_BICOPTER_CRSF_RADIO_ENABLED, mutually
+# exclusive with the ESP-NOW option (enforced by a build-time #error in radio_task.c).
 idf_component_register(SRCS "main.c"
                              "sensor_task.c"
                              "estimator_task.c"
