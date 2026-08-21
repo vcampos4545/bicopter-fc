@@ -344,11 +344,42 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   see [docs/radio.md](docs/radio.md)'s full verified-vs-deferred breakdown, including the full
   pairing procedure for whoever has real hardware.
 
-- [ ] **15. RC receiver abstraction**
+- [x] **15. RC receiver abstraction**
   Deliverable: a second `Radio`-interface (or parallel input) implementation for a conventional
   RC receiver (PPM/SBUS/etc., protocol TBD), selectable alongside or instead of ESP-NOW.
   Done when: stick/channel input from a real RC receiver is decoded into the same setpoint
   representation ESP-NOW produces, on hardware.
+  Done via: `firmware/components/radio/` — `crsf_frame.c/.h` (pure CRC8/frame-sync/decode/
+  calibration logic, zero ESP-IDF dependency) and `crsf_radio.c/.h` (ESP-IDF UART driver
+  plumbing), the second concrete `Radio` backend alongside Milestone 14's ESP-NOW. CRSF was chosen
+  over SBUS primarily because it carries a real per-frame CRC8 (this milestone's explicit
+  checksum/CRC requirement) — classic SBUS has no CRC/checksum field at all, a real protocol fact
+  reported honestly rather than glossed over; see [docs/radio.md](docs/radio.md) for the full
+  tradeoff writeup, including the finding that SBUS's usual inverted-UART objection doesn't
+  actually hold on this project's ESP32 target (`uart_set_line_inverse()`). Uses ESP-IDF's UART
+  driver in interrupt/ring-buffer mode (`uart_driver_install()`), not busy-polling; the
+  ISR/driver-task/RadioTask-context split is fully documented in docs/radio.md, including how it
+  differs from Milestone 14's own callback (here, ESP-IDF's own UART driver does the interrupt
+  work, not code this project wrote). Channel-to-function mapping and endpoint/center calibration
+  are both Kconfig-configurable, not hardcoded to one vendor's convention. `radio_is_stale()`
+  (Milestone 14) is reused unchanged for staleness/`link_alive`; packet-loss is estimated from
+  elapsed time against a configured nominal frame period, since CRSF carries no sequence number
+  (a coarser, honestly-documented approximation of ESP-NOW's exact sequence-gap figure).
+  `radio.h` required no changes — confirmed in docs/radio.md, along with the two `radio_command_t`
+  fields (sequence, timestamp_us) this backend fills differently due to data CRSF's wire format
+  doesn't carry. `firmware/main/radio_task.c` wires CRSF in as a build-time either/or alternative
+  to ESP-NOW, gated behind a new `#error` guard that fails the build if both
+  `CONFIG_BICOPTER_RADIO_ENABLED` and `CONFIG_BICOPTER_CRSF_RADIO_ENABLED` are set — confirmed to
+  actually fire in this environment, not just written and assumed correct. `idf.py build` succeeds
+  with the option off (default), on, and confirmed to fail loudly (not silently pick one) with both
+  radio options on at once. `tests/crsf_frame_test.c` (140 passing checks) covers CRC8 against the
+  published CRC-8/DVB-S2 check value, RC_CHANNELS_PACKED decoding (including a distinct-value
+  vector to catch bit-packing offset errors), rejection of corrupted/malformed/wrong-type frames,
+  the frame synchronizer's resync behavior, channel-to-command calibration/clamping, and the
+  packet-loss estimate. No physical CRSF transmitter/receiver was available in this environment —
+  real channel values/ranges, frame timing, and UART signal integrity remain unverified; see
+  docs/radio.md's full verified-vs-deferred breakdown and calibration procedure for whoever has
+  real hardware.
 
 - [ ] **16. Safety / failsafes**
   Deliverable: `flight_core/safety/` + `firmware/components/safety/` — arming logic, signal-loss

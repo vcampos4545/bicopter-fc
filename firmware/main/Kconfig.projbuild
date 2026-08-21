@@ -91,3 +91,139 @@ menu "Bicopter radio (ESP-NOW)"
             option's.
 
 endmenu
+
+menu "Bicopter radio (CRSF RC receiver)"
+
+    config BICOPTER_CRSF_RADIO_ENABLED
+        bool "CRSF RC receiver is wired to this board"
+        default n
+        help
+            No RC receiver has been wired or tested in this environment yet (no physical hardware
+            - see docs/radio.md). Leave disabled until a receiver is connected to the UART pins
+            below. RadioTask (firmware/main/radio_task.c) gracefully skips UART/CRSF init while
+            this is disabled, logging a stub cadence instead. Mutually exclusive with
+            BICOPTER_RADIO_ENABLED (ESP-NOW): enabling both is a build-time error in
+            radio_task.c, since only one radio transport backs RadioTask's single radio_t at a
+            time until a real board decides otherwise (Milestone 17).
+
+    config BICOPTER_CRSF_UART_PORT
+        int "UART port number"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 1
+        help
+            UART0 is typically reserved for the console/programming interface on most ESP32 dev
+            boards - UART1 is a safer placeholder default. Set to match the real board once one is
+            chosen.
+
+    config BICOPTER_CRSF_UART_RX_GPIO
+        int "CRSF UART RX GPIO (receiver TX wire connects here)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 16
+        help
+            Placeholder default, not verified against any actual board wiring - see
+            docs/hardware.md.
+
+    config BICOPTER_CRSF_UART_TX_GPIO
+        int "CRSF UART TX GPIO (-1 disables; unused this milestone)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default -1
+        help
+            CRSF telemetry write-back (this device -> RC receiver -> transmitter) is out of scope
+            for Milestone 15 - see docs/radio.md. Left configurable for whenever that follow-up
+            lands; -1 leaves the TX pin unconfigured (UART_PIN_NO_CHANGE).
+
+    config BICOPTER_CRSF_BAUD_RATE
+        int "CRSF UART baud rate"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 420000
+        help
+            420000 is CRSF's common default; some receiver/transmitter pairs use 400000, 921600,
+            or higher - configurable, not hardcoded to one vendor's convention.
+
+    config BICOPTER_CRSF_COMMAND_TIMEOUT_MS
+        int "Command staleness timeout (ms)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 200
+        help
+            has_command()/get_health().link_alive report the link lost if no valid RC_CHANNELS
+            frame is received within this window. CRSF links commonly run well under 20ms/frame,
+            so 200ms is a shorter placeholder than ESP-NOW's 500ms default - still a placeholder
+            pending real hardware measurement (Milestone 17), and still not what happens once the
+            link is lost, which is Milestone 16's job.
+
+    config BICOPTER_CRSF_NOMINAL_FRAME_PERIOD_US
+        int "Nominal frame period (microseconds), for the packet-loss estimate"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 4000
+        help
+            CRSF carries no sequence number (unlike this project's own ESP-NOW packet format), so
+            radio_health_t.packet_loss_percent is estimated from elapsed time against this
+            configured nominal period rather than counted from sequence-number gaps - see
+            docs/radio.md. Set to roughly match the transmitter's real configured CRSF update rate
+            once known; a wrong value only makes this figure meaningless, it never affects
+            link_alive/staleness detection.
+
+    config BICOPTER_CRSF_THROTTLE_CHANNEL
+        int "Throttle channel index (0-15)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 0
+
+    config BICOPTER_CRSF_ROLL_CHANNEL
+        int "Roll channel index (0-15)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 1
+
+    config BICOPTER_CRSF_PITCH_CHANNEL
+        int "Pitch channel index (0-15)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 2
+
+    config BICOPTER_CRSF_YAW_CHANNEL
+        int "Yaw channel index (0-15)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 3
+
+    config BICOPTER_CRSF_ARM_CHANNEL
+        int "Arm-switch channel index (0-15)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 4
+
+    config BICOPTER_CRSF_FLIGHT_MODE_CHANNEL
+        int "Flight-mode-switch channel index (0-15)"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 5
+
+    config BICOPTER_CRSF_FLIGHT_MODE_POSITIONS
+        int "Flight-mode switch position count"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 3
+        help
+            Number of discrete positions to quantize the flight-mode channel into (e.g. 3 for a
+            standard 3-position switch). flight_mode is reported as 0..(positions-1).
+
+    config BICOPTER_CRSF_RAW_MIN
+        int "Raw channel value at the low endpoint"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 172
+        help
+            172/992/1811 are the de facto CRSF/OpenTX endpoint convention (~988-2012us mapped onto
+            an 11-bit raw range) - a reasonable default, not this project asserting it's correct
+            for every transmitter. Measure and set the real endpoints for the actual TX/RX pair
+            once hardware exists - see docs/radio.md's calibration procedure.
+
+    config BICOPTER_CRSF_RAW_CENTER
+        int "Raw channel value at center/neutral"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 992
+
+    config BICOPTER_CRSF_RAW_MAX
+        int "Raw channel value at the high endpoint"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 1811
+
+    config BICOPTER_CRSF_ARM_THRESHOLD
+        int "Raw channel value at/above which the arm channel reads as armed"
+        depends on BICOPTER_CRSF_RADIO_ENABLED
+        default 992
+
+endmenu
