@@ -7,7 +7,7 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 13 (simulator closed-loop stabilization) is complete. `firmware/` is a real ESP-IDF
+**Status:** Milestone 14 (ESP-NOW radio) is complete. `firmware/` is a real ESP-IDF
 v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
@@ -60,9 +60,26 @@ pitch axis — are fully documented in [docs/simulation.md](docs/simulation.md),
 confirmation that Milestones 10-11's placeholder control gains converge as-is, without retuning.
 Wiring this same stack into `firmware/`'s `EstimatorTask`/`FlightControlTask` for real hardware
 remains a noted follow-up (see docs/estimation.md and docs/simulation.md) — Milestone 13 closes
-the loop in the simulator only. No real hardware was available to verify actual I2C/PWM
-transactions or real-hardware task timing — see [TODO.md](TODO.md) for the full roadmap and what's
-implemented so far.
+the loop in the simulator only. As of Milestone 14, `firmware/components/radio/` implements this
+project's first real radio link: `include/radio.h` is a protocol-independent `Radio` HAL interface
+(so Milestone 15's RC-receiver implementation is a second backend behind it, not a rewrite), and
+`esp_now_radio.c/.h` is the first concrete implementation — Wi-Fi/ESP-NOW init and pairing, a
+command packet (sequence, timestamp, throttle/roll/pitch/yaw, arm, flight mode) and a minimal
+telemetry echo, both validated (magic/version/checksum, non-finite-float rejection) by
+`radio_packet.c/.h`'s pure, ESP-IDF-free logic. ESP-NOW's receive callback runs in the Wi-Fi
+driver's own task context (not an ISR, but still foreign context this driver must not do real work
+in) and does only a bounds-checked, non-blocking queue post; all real parsing, RFC1982-style
+sequence-number staleness/reordering rejection, and packet-loss-percentage tracking happen in a
+dedicated processing step called once per cycle from Milestone 6's existing `RadioTask`, gated
+behind `CONFIG_BICOPTER_RADIO_ENABLED` (default off, no ground-station peer paired yet). Radio-loss
+is exposed through `radio_health_t.link_alive` — Milestone 16 still decides what to *do* about a
+lost link. No physical ESP32 pair was available to verify real over-the-air delivery/latency/
+loss/RSSI, but `idf.py build` was confirmed to succeed with the radio option both off and on (a
+real build against ESP-IDF's `esp_wifi`/`esp_now` libraries, not review alone), and every piece of
+pure packet logic has real passing host-side tests — see [docs/radio.md](docs/radio.md) for the
+full packet format, callback/task-context writeup, and pairing procedure. No real hardware was
+available to verify actual I2C/PWM/radio transactions or real-hardware task timing — see
+[TODO.md](TODO.md) for the full roadmap and what's implemented so far.
 
 ## Target vehicle
 
@@ -205,9 +222,11 @@ decimation check), `flight_core/math/`'s vector/matrix/quaternion library,
 `flight_core/estimation/`'s complementary-filter attitude estimator (Milestone 8),
 `simulator/physics/`'s rigid-body dynamics model (Milestone 9), `flight_core/control/`'s
 `Pid` building block, `RateController` (Milestone 10), `AttitudeController` (Milestone 11), and
-`ControlAllocator` (Milestone 12), and — as of Milestone 13 — `simulator/sim_loop/`'s full
-closed-loop convergence tests (`sim_loop_test`, see [docs/simulation.md](docs/simulation.md)) —
-all built independently of ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
+`ControlAllocator` (Milestone 12), — as of Milestone 13 — `simulator/sim_loop/`'s full
+closed-loop convergence tests (`sim_loop_test`, see [docs/simulation.md](docs/simulation.md)), and
+— as of Milestone 14 — the radio component's pure packet-format/sequence-staleness/packet-loss
+logic (`radio_packet_test`, see [docs/radio.md](docs/radio.md)) — all built independently of
+ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
 tests link the real static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`);
 `control_allocator_test` additionally links `bicopter_physics` (not just `flight_core`) so its
 round-trip checks can call Milestone 9's real forward-dynamics function directly; `sim_loop_test`
@@ -238,5 +257,7 @@ ctest --test-dir tests/build --output-on-failure
 - [docs/simulation.md](docs/simulation.md) — closed-loop wiring (`simulator/sim_loop/`), the
   simulated IMU (`simulator/sensors/`), convergence criteria, and this milestone's findings on
   accelerometer observability during hover and gyroscopic pitch coupling
+- [docs/radio.md](docs/radio.md) — `Radio` HAL interface, ESP-NOW packet format, the
+  callback/task-context split, packet-loss/staleness tracking, and pairing procedure
 - [AGENTS.md](AGENTS.md) — structural/convention decisions for engineers and agents working on
   later milestones

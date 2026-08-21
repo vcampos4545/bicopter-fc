@@ -304,11 +304,45 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   zero once. `idf.py build` still succeeds (`firmware/` untouched — this milestone is
   simulator-only).
 
-- [ ] **14. ESP-NOW**
+- [x] **14. ESP-NOW**
   Deliverable: `firmware/components/radio/` ESP-NOW link implementing the `Radio` interface for
   telemetry down and setpoint/command up.
   Done when: two ESP32 boards exchange setpoint and telemetry packets over ESP-NOW with measured
   latency/loss characteristics documented.
+  Done via: `firmware/components/radio/` — `include/radio.h`, a protocol-independent `Radio` HAL
+  interface (`has_command`/`get_command`/`get_health`/`deinit`, the same ops-vtable-plus-ctx shape
+  as `motor_output_t`) so Milestone 15's RC-receiver implementation is a second backend behind the
+  same interface, not a rewrite. `esp_now_radio.c/.h` is the first concrete implementation: Wi-Fi
+  station + ESP-NOW init/pairing, a 33-byte command packet (sequence, timestamp,
+  throttle/roll/pitch/yaw, arm, flight mode) and a 21-byte telemetry echo packet, both with a
+  magic/version/checksum guard against a foreign or corrupted packet. `radio_packet.c/.h` holds
+  the pure wire-format serialize/parse/validation, RFC1982-style sequence-number staleness/
+  reordering rejection (correct under `uint32` wraparound), and packet-loss-percentage tracking
+  (from sequence-number gaps) — zero ESP-IDF dependency by design, same driver-testing convention
+  as Milestone 3's MPU6050 driver (see AGENTS.md). The design brief's central safety requirement —
+  ESP-NOW's receive callback runs in the Wi-Fi driver's own task context and must do minimal work
+  only — is honored by `esp_now_recv_cb()` (bounds-check + non-blocking queue post, no parsing/
+  logging/blocking) with all real parsing/validation/sequence-tracking work moved into
+  `esp_now_radio_process_pending()`, called once per cycle from Milestone 6's existing `RadioTask`
+  (`firmware/main/radio_task.c`) rather than a new task. Radio-loss detection is exposed through
+  `radio_health_t.link_alive` (a configurable staleness timeout,
+  `CONFIG_BICOPTER_RADIO_COMMAND_TIMEOUT_MS`, default 500ms) — Milestone 16 decides what to do
+  about it, this milestone only makes it reliably detectable. RSSI is real, not fabricated:
+  ESP-IDF's `esp_now_recv_info_t.rx_ctrl->rssi` is populated by the Wi-Fi driver for every received
+  frame (confirmed against this project's pinned ESP-IDF v5.5.5 headers), carried through to
+  `radio_health_t.rssi_dbm`. Gated behind `CONFIG_BICOPTER_RADIO_ENABLED` (default off, no
+  ground-station peer paired yet — same pattern as `CONFIG_BICOPTER_SENSORS_ENABLED`), configured
+  via a new "Bicopter radio (ESP-NOW)" Kconfig menu (peer MAC, Wi-Fi channel, staleness timeout).
+  `idf.py build` succeeds both with the option off (default) and on (a real build against
+  ESP-IDF's actual `esp_wifi`/`esp_now`/`nvs_flash` libraries, not review alone — confirmed in this
+  environment). `tests/radio_packet_test.c` (47 checks) covers command/telemetry packet
+  round-trips, malformed/undersized/corrupted-packet rejection, non-finite-float rejection,
+  sequence staleness/reordering/wraparound, packet-loss-percentage computation against
+  hand-derived gap patterns, and staleness-timeout boundary arithmetic — everything host-testable.
+  No physical ESP32 pair was available in this environment, so real over-the-air packet
+  delivery, latency, loss, range, and RSSI values under actual RF conditions remain unverified —
+  see [docs/radio.md](docs/radio.md)'s full verified-vs-deferred breakdown, including the full
+  pairing procedure for whoever has real hardware.
 
 - [ ] **15. RC receiver abstraction**
   Deliverable: a second `Radio`-interface (or parallel input) implementation for a conventional

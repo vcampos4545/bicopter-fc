@@ -88,7 +88,12 @@ Working interface shape (refined as later milestones implement them):
   limits and center-trim are hidden behind the implementation.
 - **`Radio`** — `send(telemetry packet)` / `receive() -> setpoint packet, or none`. Both
   ESP-NOW and a future RC-receiver implementation produce the same setpoint representation so
-  `FlightControlTask` doesn't know or care which transport is in use.
+  `FlightControlTask` doesn't know or care which transport is in use. Landed at Milestone 14 as
+  `firmware/components/radio/include/radio.h` (`radio_has_command()`/`radio_get_command()`/
+  `radio_get_health()`, refined from this document's original sketch into a poll-style vtable
+  matching this project's other HAL interfaces), with ESP-NOW (`esp_now_radio.c/.h`) as the first
+  concrete implementation — see [docs/radio.md](radio.md) for the packet format, the
+  callback/task-context split, and pairing.
 - **Battery monitor** (voltage/current) — same shape as `Barometer`: a small polled-read
   interface, exact type TBD when the ESC/servo HAL milestone lands, since current sense is often
   wired through the same ADC/telemetry path as the ESCs.
@@ -130,7 +135,7 @@ file; if a later milestone changes one, update both in the same change.
 | `SensorTask` | 9 | 2 ms (500 Hz) | Calls the real `mpu6050_read()`/`bmp581_read()` driver interfaces when `CONFIG_BICOPTER_SENSORS_ENABLED` is set (see "Sensor hardware exercised" below); publishes each cycle's `sensor_sample_t` onto a length-1 overwrite queue. | Unchanged in spirit; the queue's consumer (`EstimatorTask`) grows real logic. |
 | `EstimatorTask` | 8 | Queue-driven, no independent period (blocks on the sensor queue, ≤10 ms wait to keep feeding the watchdog if `SensorTask` stalls) | Receives each sample and logs/discards it - no estimation math exists yet. | Milestone 8: attitude/altitude estimator built on the `flight_core/math/` library ([docs/math.md](math.md)) landed in milestone 7. |
 | `FlightControlTask` | 7 | 4 ms (250 Hz) | Reads `safety_state_t` and drains its pending safety-ping notification, logs both, decimated - no control math or actuator writes. | Milestones 10-12: rate/attitude control + allocation, writing `MotorOutput`/`ServoOutput`. |
-| `RadioTask` | 5 | 20 ms (50 Hz) | Logs its own cadence - no radio transport exists yet. | Milestones 14-15: ESP-NOW and/or RC-receiver `Radio` implementation; deposits setpoints for `FlightControlTask`, non-blocking. |
+| `RadioTask` | 5 | 20 ms (50 Hz) | As of Milestone 14: when `CONFIG_BICOPTER_RADIO_ENABLED` is set, owns the real ESP-NOW `Radio` implementation, calling `esp_now_radio_process_pending()` every cycle (the "dedicated task" that does all real packet parsing/validation/sequence-tracking - see [docs/radio.md](radio.md)) and logging link health, decimated; with it unset (default), logs its own cadence like the Milestone 6 stub. Does not yet deposit setpoints into `FlightControlTask` - that wiring is a distinct, still-unstarted piece of work (see AGENTS.md). | Milestone 15: RC-receiver `Radio` implementation, selectable alongside/instead of ESP-NOW; eventually deposits setpoints for `FlightControlTask`, non-blocking. |
 | `TelemetryTask` | 3 (lowest) | 50 ms (20 Hz), woken by an `esp_timer` (see below) rather than self-paced | Reads `safety_state_t` and logs it, decimated - no downlink transport exists yet. | Milestone 14+: packages state for `RadioTask`'s downlink. |
 
 Priorities are `tskIDLE_PRIORITY + N` (see `task_config.h`); periods were picked from this
