@@ -24,11 +24,10 @@ timestep. Explicitly **not** in scope this milestone:
 - **Control allocation** (desired body torque/thrust → motor/servo commands, the inverse
   problem) — Milestone 12.
 - **Attitude/rate controllers** — Milestones 10-11.
-- **Simulated sensor noise/bias models.** No `Imu`/`Barometer` implementations exist yet;
-  `simulator/sensors/` remains unimplemented. A future milestone (13, when the estimator/
-  controller stack closes the loop against this physics model) will need to derive simulated
-  `ImuSample`s from `RigidBodyState` — that conversion, and whatever noise model it carries, is
-  deferred to whichever milestone first needs it, not invented ahead of time here.
+- **Simulated sensor noise/bias models.** No `Imu`/`Barometer` implementations existed yet at this
+  milestone. Landed at Milestone 13: `simulator/sensors/`'s `SimulatedImu` derives noisy
+  `ImuSample`s from `RigidBodyState` (no `Barometer` implementation yet — attitude-only, matching
+  `flight_core/estimation/`'s scope) — see [simulation.md](simulation.md).
 
 ## Geometry
 
@@ -147,9 +146,11 @@ tau_drag_body = -angular_drag_coefficient_nm_per_radps * omega_body
 
 Both default to `0` (no drag) unless configured — this milestone's tests exercise the
 undamped case throughout (drag would only obscure the exact free-fall/hover/torque checks
-below), and a nonzero value is there for whichever later milestone (13's closed-loop
-stabilization, most likely) wants some velocity damping for a more well-behaved simulated
-vehicle.
+below). Milestone 13's closed-loop simulator is the first caller to configure a nonzero value: a
+combined multi-axis maneuver excites gyroscopic cross-coupling that leaks into an
+uncontrolled axis (pitch, given the default zero center-of-mass offset — see
+[control_allocation.md](control_allocation.md)), and without damping that leaked rate never
+decays; see [simulation.md](simulation.md) for the full finding and the values used.
 
 ## Forces
 

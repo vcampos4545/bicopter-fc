@@ -336,9 +336,10 @@ constraint as `motorThrustDirectionBody()` above) — `tests/control_allocator_t
 round-trip checks construct a `simulator::ActuatorCommand` from an `AllocatedCommand`'s fields
 explicitly at the call site.
 
-Nothing calls `ControlAllocator` yet — wiring it (and `RateController`/`AttitudeController`) into
-`FlightControlTask` and the simulator's closed loop is Milestone 13's job, per
-[control.md](control.md)'s Status section and [TODO.md](../TODO.md).
+As of Milestone 13, `simulator/sim_loop/`'s `SimLoop` calls `ControlAllocator` (and
+`RateController`/`AttitudeController`) as part of the simulator's real closed loop — see
+[simulation.md](simulation.md). Wiring the same stack into firmware's `FlightControlTask` for real
+hardware remains unstarted (a noted follow-up, not this milestone's scope).
 
 ## Tests
 

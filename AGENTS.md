@@ -133,18 +133,27 @@ duplicating it) required moving `motorThrustDirectionBody()` from `simulator/phy
 links `flight_core`, never the reverse, so shared code has to live on the flight_core side of that
 edge (the same reasoning that put `VehicleParams` there at Milestone 9); any later milestone
 needing to share code between `flight_core/` and something that depends on it should follow the
-same pattern rather than duplicating. Nothing calls any of `Pid`/`RateController`/
-`AttitudeController`/`ControlAllocator` yet — `FlightControlTask`
-(`firmware/main/flight_control_task.c`) still only reads/logs `safety_state_t`, and the simulator
-has no control loop wired in either; both remain future wiring work for Milestone 13, which is
-where the whole stack first runs closed-loop. `docs/control.md` covers the
+same pattern rather than duplicating. As of Milestone 13, `simulator/sim_loop/`'s `SimLoop` calls
+the full `Pid`/`RateController`/`AttitudeController`/`ControlAllocator` cascade against Milestone
+9's simulated dynamics, fed by `simulator/sensors/`'s new `SimulatedImu` (noisy `ImuSample`s
+derived from `RigidBodyState` ground truth) rather than perfect state — this is the milestone
+where the whole stack first runs closed-loop, demonstrated by `tests/sim_loop_test.cpp`'s genuine
+convergence tests (attitude error dropping below a tolerance and staying there, not touching zero
+once) and `simulator/main.cpp`'s (`bicopter_sim`) text-trace demo. Two real, structural findings
+from this wiring work — accelerometer correction being provably uninformative during hover for a
+body-fixed-thrust vehicle, and gyroscopic cross-coupling leaking into the (structurally
+unauthoritative, per Milestone 12) pitch axis during multi-axis maneuvers — are fully documented
+in [docs/simulation.md](docs/simulation.md), which also confirms Milestones 10-11's placeholder
+control gains converge as configured, without retuning. `FlightControlTask`
+(`firmware/main/flight_control_task.c`) still only reads/logs `safety_state_t` — wiring this same
+stack into firmware for real hardware remains unstarted, a distinct (and larger, hardware-adjacent)
+piece of work from closing the loop in simulation. `docs/control.md` covers the
 `Pid`/`RateController`/`AttitudeController` design and links to
 [docs/control_allocation.md](docs/control_allocation.md) for `ControlAllocator`.
-`docs/estimation.md` covers attitude estimation as of Milestone 8; barometer-based
-altitude/vertical-velocity estimation and simulated sensor noise/bias models are both explicitly
-deferred to later milestones (noted in docs/estimation.md and docs/dynamics.md respectively, not
-silently missing). See [TODO.md](TODO.md) for the full milestone sequence and
-current status.
+`docs/estimation.md` covers attitude estimation as of Milestone 8 and its Milestone 13 update on
+hover observability; barometer-based altitude/vertical-velocity estimation remains deferred to a
+later milestone (noted in docs/estimation.md, not silently missing). See [TODO.md](TODO.md) for
+the full milestone sequence and current status.
 
 ## CMake: guard a shared subdirectory before add_subdirectory-ing it
 

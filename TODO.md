@@ -267,12 +267,42 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   inverse actually reproduces the requested thrust/torque. `idf.py build` still succeeds
   (`firmware/` untouched this milestone).
 
-- [ ] **13. Simulator closed-loop stabilization**
+- [x] **13. Simulator closed-loop stabilization**
   Deliverable: the full flight_core stack (estimator + attitude/rate control + allocation)
   running unmodified inside `simulator/`, closing the loop against the physics model from
   milestone 9.
   Done when: the simulated vehicle self-stabilizes to a commanded attitude from a perturbed
   initial state, demonstrated in the simulator (with visualization if available by then).
+  Done via: `simulator/sensors/` — `SimulatedImu` (`include/simulated_imu.h`,
+  `src/simulated_imu.cpp`), producing noise/bias-corrupted `ImuSample`s from Milestone 9's
+  `RigidBodyState` ground truth at a configurable, fixed sample rate (default 500 Hz, matching
+  `SensorTask`). `simulator/sim_loop/` — `SimLoop` (`include/sim_loop.h`, `src/sim_loop.cpp`)
+  wires estimator -> `AttitudeController` -> `RateController` -> `ControlAllocator` -> Milestone
+  9 dynamics into one steppable loop, at `SensorTask`/`FlightControlTask`'s real 500 Hz/250 Hz
+  cadence split (zero-order-hold actuator commands between control cycles). `simulator/main.cpp`
+  (`bicopter_sim`) is a minimal text-trace demo (no graphical visualization — out of scope for
+  this numbered milestone). Two real, structural findings surfaced and are fully documented in
+  [docs/simulation.md](docs/simulation.md): (1) this vehicle's body-fixed thrust makes
+  accelerometer-based gravity-direction correction provably uninformative during hover (an
+  extension of Milestone 8's "yaw unobservable from gravity" finding to roll/pitch as well), so
+  the closed loop runs the estimator with `kp=0` (pure gyro integration) during flight, seeded
+  from the true initial attitude at arm time (modeling real pre-arm accelerometer calibration);
+  (2) a combined roll+yaw maneuver excites gyroscopic cross-coupling that leaks into pitch, an
+  axis the default (zero CoM offset) vehicle has no torque authority over (Milestone 12's
+  finding) — nonzero drag (anticipated by docs/dynamics.md for exactly this milestone) bounds
+  that leakage instead of letting it grow unboundedly. Milestones 10-11's placeholder
+  `Pid`/`RateController`/`AttitudeController` gains were validated, not retuned — they converge
+  all tested cases once the above were fixed (see docs/simulation.md's "Gain tuning" section for
+  why this is reported honestly rather than re-tuned for its own sake).
+  `tests/sim_loop_test.cpp` (12 checks, 3 real convergence cases, not single-step sanity checks):
+  a 20° roll disturbance and a combined 15° roll + 20° yaw disturbance, both recovering to level
+  under the default (zero CoM offset) vehicle — respecting Milestone 12's no-pitch-authority
+  finding rather than contradicting it — plus an additional 15° pitch disturbance recovering to
+  level under a nonzero-CoM-offset vehicle, demonstrating real pitch authority when configured.
+  Each case asserts the TRUE (ground-truth, not estimated) attitude error drops below a
+  documented tolerance and *stays* there for the rest of a multi-second run, not just touches
+  zero once. `idf.py build` still succeeds (`firmware/` untouched — this milestone is
+  simulator-only).
 
 - [ ] **14. ESP-NOW**
   Deliverable: `firmware/components/radio/` ESP-NOW link implementing the `Radio` interface for
