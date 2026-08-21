@@ -6,8 +6,10 @@
 # desktop-only libraries.
 #
 # Milestone 7 (math/) was the first real source in this library; Milestone 8 (estimation/) is the
-# second. control/dynamics/vehicle/safety remain unimplemented until their respective milestones
-# land (see ../TODO.md). Do not add stub .cpp files for those just to make this configure.
+# second. Milestone 9 (vehicle/) adds VehicleParams — pure configuration data, header-only, so it
+# needs an include path but no new .cpp source. control/dynamics/safety remain unimplemented
+# until their respective milestones land (see ../TODO.md). Do not add stub .cpp files for those
+# just to make this configure.
 
 cmake_minimum_required(VERSION 3.16)
 project(flight_core CXX)
@@ -19,8 +21,7 @@ add_library(flight_core STATIC
     estimation/src/complementary_filter.cpp
     # control/...
     # dynamics/...
-    # vehicle/...
     # safety/...
 )
-target_include_directories(flight_core PUBLIC math/include estimation/include)
+target_include_directories(flight_core PUBLIC math/include estimation/include vehicle/include)
 target_compile_features(flight_core PUBLIC cxx_std_17)

@@ -143,13 +143,38 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   (needs `flight_core` wired as an ESP-IDF component plus a C/C++ boundary adapter — see
   docs/estimation.md's "Firmware wiring" section), not attempted this milestone.
 
-- [ ] **9. Bicopter dynamics simulator**
+- [x] **9. Bicopter dynamics simulator**
   Deliverable: `simulator/physics/` — a rigid-body dynamics model of the bicopter (mass,
   inertia, motor thrust/torque, servo tilt geometry) driving simulated `Imu`/`Barometer`
   implementations that `flight_core` reads through the same HAL interfaces used on hardware.
   Done when: the simulator runs an open-loop physics integration that responds plausibly to
   fixed motor/servo commands (e.g. correct free-fall and torque response), independent of any
   controller.
+  Done via: `simulator/physics/` (`include/bicopter_dynamics.h`, `src/bicopter_dynamics.cpp`) —
+  `computeStateDerivative()` implements `m*v_dot=F` and `I*omega_dot + omega x (I*omega) = tau`
+  (gravity + per-motor thrust/reaction-torque + simple linear drag; diagonal-inertia solve for
+  `omega_dot`, see [docs/dynamics.md](docs/dynamics.md) for why), and `stepRigidBodyState()`
+  integrates forward with semi-implicit Euler for translation/angular-velocity and
+  `Quaternion::integrate()` (Milestone 7) for orientation. Vehicle-specific constants (mass,
+  diagonal inertia, motor arm offsets/spin direction/tilt limits/thrust+torque coefficients,
+  drag coefficients) live in `flight_core/vehicle/include/vehicle_params.h`
+  (`VehicleParams`/`MotorParams`) per docs/hardware.md's Milestone-1 design note that this
+  config is meant to be shared with Milestone 12's control allocation, not duplicated. Every
+  geometry/coefficient assumption (tilt-vectoring axis and sign convention, quadratic
+  thrust-vs-throttle curve, thrust-proportional reaction torque, independently-configurable
+  motor spin direction, diagonal-inertia rationale, linear drag model) is derived and documented
+  in [docs/dynamics.md](docs/dynamics.md), not invented ad hoc. `tests/bicopter_dynamics_test.cpp`
+  (linked against a new `bicopter_physics` static library, `simulator/physics/CMakeLists.txt`,
+  itself linking `flight_core`) covers free-fall kinematics, symmetric-thrust hover equilibrium
+  (zero net acceleration and torque), asymmetric-thrust- and tilt-induced torque checked against
+  hand-derived closed forms, reaction-torque-driven yaw, and a torque-free angular-momentum
+  conservation check — 2034 passing checks. Simulated sensor noise/bias models and
+  `simulator/sensors/` remain explicitly deferred (see docs/dynamics.md's Scope section);
+  `simulator/main.cpp`/the `bicopter_sim` executable also remain unbuilt (a smoke-test executable
+  was judged unnecessary given the automated test coverage) — `simulator/CMakeLists.txt` now
+  configures `physics/` as a real subdirectory, standalone-buildable
+  (`cmake -S simulator -B simulator/build`) as well as via `tests/`. `idf.py build` still
+  succeeds (`firmware/` untouched this milestone).
 
 - [ ] **10. PID / rate controller**
   Deliverable: `flight_core/control/` — a rate (angular-velocity) controller (PID or equivalent)

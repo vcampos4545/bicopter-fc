@@ -11,7 +11,9 @@
 #
 # Milestone 7 (flight_core/math/) is a real standalone plain-CMake library (see
 # ../flight_core/CMakeLists.txt), so its tests link against the `flight_core` target directly via
-# add_subdirectory rather than compiling its sources a second time.
+# add_subdirectory rather than compiling its sources a second time. Milestone 9
+# (simulator/physics/) follows the same pattern via ../simulator/physics/CMakeLists.txt's
+# `bicopter_physics` target, which itself depends on `flight_core`.
 
 cmake_minimum_required(VERSION 3.16)
 project(bicopter_fc_tests C CXX)
@@ -23,6 +25,7 @@ set(ACTUATORS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/components/actuators)
 set(MAIN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/main)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../flight_core flight_core-build)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../simulator/physics simulator_physics-build)
 
 add_executable(mpu6050_convert_test
     mpu6050_convert_test.c
@@ -98,3 +101,8 @@ add_executable(complementary_filter_test complementary_filter_test.cpp)
 target_link_libraries(complementary_filter_test flight_core)
 
 add_test(NAME complementary_filter_test COMMAND complementary_filter_test)
+
+add_executable(bicopter_dynamics_test bicopter_dynamics_test.cpp)
+target_link_libraries(bicopter_dynamics_test bicopter_physics)
+
+add_test(NAME bicopter_dynamics_test COMMAND bicopter_dynamics_test)

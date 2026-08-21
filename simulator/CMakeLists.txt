@@ -1,26 +1,24 @@
 # simulator: desktop physics simulator that links flight_core unmodified
 # against simulated hardware-abstraction implementations.
 #
-# Milestone 1 stub only — no sources exist yet. This file wires the intended
-# build shape (a desktop executable depending on ../flight_core) so later
-# milestones (9: dynamics simulator, 13: closed-loop stabilization) add
-# source files here without renegotiating the build structure. See
-# ../docs/architecture.md for the simulator execution model.
-#
-# Deliberately not implemented yet: no physics/sensors/visualization sources
-# exist in this repository until their respective milestones land (see
-# ../TODO.md). Do not add stub .cpp files just to make this configure.
+# Milestone 9 adds physics/ (see physics/CMakeLists.txt) as a real, standalone static library —
+# the rigid-body forward-dynamics model, see ../docs/dynamics.md. sensors/ (simulated
+# Imu/Barometer HAL implementations) and visualization/ remain unimplemented; main.cpp (the
+# interactive bicopter_sim executable) is deliberately not built yet either — Milestone 9's brief
+# judged a smoke-test executable unnecessary given the automated test coverage under ../tests/,
+# leaving that entry point for whichever future milestone (13: closed-loop stabilization, or
+# earlier if a smoke test becomes useful) first needs one. Do not add stub .cpp files for
+# sensors/visualization just to make this configure.
 
 cmake_minimum_required(VERSION 3.16)
 project(bicopter_sim CXX)
 
-# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../flight_core ${CMAKE_CURRENT_BINARY_DIR}/flight_core)
-#
+add_subdirectory(physics)
+
 # add_executable(bicopter_sim
 #     main.cpp
-#     # physics/...
 #     # sensors/...
 #     # visualization/...
 # )
-# target_link_libraries(bicopter_sim PRIVATE flight_core)
+# target_link_libraries(bicopter_sim PRIVATE bicopter_physics)
 # target_compile_features(bicopter_sim PRIVATE cxx_std_17)
