@@ -231,13 +231,41 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   explicitly-undertaken (not full recovery) scope of the 180-degree handling. `idf.py build` still
   succeeds (`firmware/` untouched this milestone).
 
-- [ ] **12. Control allocation**
+- [x] **12. Control allocation**
   Deliverable: `flight_core/control/` allocation logic mapping desired body torques/thrust to
   the two motors' throttle and two servos' tilt angles, derived from the actual bicopter
   force/torque geometry documented in `docs/control.md` at that time (not invented mixing
   coefficients).
   Done when: allocation math is derived from the vehicle geometry, unit-tested against known
   torque/thrust demands, and respects actuator limits.
+  Done via: `flight_core/control/` — `ControlAllocator` (`include/control_allocator.h`,
+  `src/control_allocator.cpp`), converting a desired total thrust + body torque (the direct output
+  shape of Milestones 10-11) into motor1/2 throttle and motor1/2 tilt, in Milestone 5's
+  `MotorOutput`/`ServoOutput` normalized units. The allocation math is a small-angle linearization
+  of Milestone 9's exact forward-dynamics equations around hover, decoupled into two independent
+  2x2 linear solves (total-thrust+roll -> per-motor thrust, then pitch+yaw -> per-motor tilt given
+  those thrusts) — every coefficient traces to a `VehicleParams` field, none invented. See
+  [docs/control_allocation.md](docs/control_allocation.md) for the full term-by-term derivation.
+  `motorThrustDirectionBody()` moved from `simulator/physics/` to
+  `flight_core/vehicle/include/motor_geometry.h` this milestone so the allocator could call the
+  exact same function Milestone 9 already tests, rather than duplicating it (`simulator/physics/`
+  still re-exposes it unchanged for existing callers). The milestone's central finding: with this
+  vehicle's geometry (both motors on body Y, tilt axis also body Y) and
+  `VehicleParams::center_of_mass_offset_m` at its default `Vec3::Zero()`, this configuration has NO
+  pitch-torque authority near hover — a provable structural fact, not an allocator limitation; real
+  pitch authority requires a nonzero vertical CoM/motor-plane offset, which the allocator uses
+  correctly when configured and honestly reports as unachievable (via `AllocatedCommand::saturated`)
+  when not, rather than silently doing nothing. Saturation policy: motor throttle bounds are hard
+  limits; total thrust is preserved over roll accuracy when they conflict (losing lift is worse
+  than losing some roll authority); tilt/pitch/yaw saturate independently per-servo. Degenerate
+  geometry (near-zero determinants) falls back to documented, non-crashing behavior rather than
+  dividing by zero. `tests/control_allocator_test.cpp` (144 checks) covers hover, isolated
+  roll/pitch/yaw, the pitch-achievable-vs-unachievable CoM-offset comparison, saturation (excess/
+  negative thrust, extreme roll/yaw, adversarial-input finiteness, degenerate geometry), and —the
+  single most important test in this milestone — a combined multi-axis command whose allocator
+  output is fed back through Milestone 9's real `computeStateDerivative()` to confirm the derived
+  inverse actually reproduces the requested thrust/torque. `idf.py build` still succeeds
+  (`firmware/` untouched this milestone).
 
 - [ ] **13. Simulator closed-loop stabilization**
   Deliverable: the full flight_core stack (estimator + attitude/rate control + allocation)

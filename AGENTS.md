@@ -117,16 +117,29 @@ a desired body torque). As of Milestone 11, `flight_core/control/` also adds `At
 current.inverse() * desired`; see docs/control.md for why that multiplication order, not the
 reverse, is the one consistent with `Quaternion::integrate()`'s right-multiply body-rate
 convention) converting a desired/current attitude quaternion pair into a desired body rate,
-feeding `RateController::update()`'s `desired_radps` argument unchanged. Nothing calls either
-controller yet — `FlightControlTask` (`firmware/main/flight_control_task.c`) still only
-reads/logs `safety_state_t`, and the simulator has no control loop wired in either; both remain
-future wiring work for Milestone 13, which is where the whole stack first runs closed-loop.
-`docs/control.md` covers the `Pid`/`RateController`/`AttitudeController` design as of Milestone
-11; the force/torque model and control-allocation math (Milestone 12) must still be *derived*
-from real vehicle geometry when that milestone lands, not invented ahead of time — that geometry
-(motor arm offsets, tilt-axis convention, thrust/torque coefficients) is already recorded in
-`VehicleParams` and [docs/dynamics.md](docs/dynamics.md) as of Milestone 9, so Milestone 12
-should consume it rather than re-deriving or duplicating it.
+feeding `RateController::update()`'s `desired_radps` argument unchanged. As of Milestone 12,
+`flight_core/control/` also adds `ControlAllocator` (`include/control_allocator.h`,
+`src/control_allocator.cpp`) — converting a desired total thrust + body torque into motor1/2
+throttle and motor1/2 tilt (Milestone 5's `MotorOutput`/`ServoOutput` normalized units), derived
+term-by-term (a small-angle linearization around hover, decoupled into a thrust/roll 2x2 solve
+followed by a tilt/pitch/yaw 2x2 solve) from Milestone 9's exact forward-dynamics equations, not
+invented; see [docs/control_allocation.md](docs/control_allocation.md) for the full derivation,
+including the milestone's central finding that this vehicle's geometry has no pitch-torque
+authority near hover unless `VehicleParams::center_of_mass_offset_m` has a nonzero vertical
+component (a real hardware/geometry finding for Milestone 17, not an allocator limitation).
+Getting this derivation to reuse Milestone 9's exact thrust-direction formula (rather than
+duplicating it) required moving `motorThrustDirectionBody()` from `simulator/physics/` down into
+`flight_core/vehicle/include/motor_geometry.h` — `simulator/physics/`'s `bicopter_physics` target
+links `flight_core`, never the reverse, so shared code has to live on the flight_core side of that
+edge (the same reasoning that put `VehicleParams` there at Milestone 9); any later milestone
+needing to share code between `flight_core/` and something that depends on it should follow the
+same pattern rather than duplicating. Nothing calls any of `Pid`/`RateController`/
+`AttitudeController`/`ControlAllocator` yet — `FlightControlTask`
+(`firmware/main/flight_control_task.c`) still only reads/logs `safety_state_t`, and the simulator
+has no control loop wired in either; both remain future wiring work for Milestone 13, which is
+where the whole stack first runs closed-loop. `docs/control.md` covers the
+`Pid`/`RateController`/`AttitudeController` design and links to
+[docs/control_allocation.md](docs/control_allocation.md) for `ControlAllocator`.
 `docs/estimation.md` covers attitude estimation as of Milestone 8; barometer-based
 altitude/vertical-velocity estimation and simulated sensor noise/bias models are both explicitly
 deferred to later milestones (noted in docs/estimation.md and docs/dynamics.md respectively, not

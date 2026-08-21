@@ -121,3 +121,13 @@ add_executable(attitude_controller_test attitude_controller_test.cpp)
 target_link_libraries(attitude_controller_test flight_core)
 
 add_test(NAME attitude_controller_test COMMAND attitude_controller_test)
+
+# control_allocator_test links bicopter_physics (not just flight_core) because its round-trip
+# checks feed the allocator's output through Milestone 9's real computeStateDerivative() -- see
+# control_allocator_test.cpp's file header. bicopter_physics already links flight_core, so this
+# also gives it flight_core/control/'s ControlAllocator via bicopter_physics's public include
+# dirs plus flight_core's own.
+add_executable(control_allocator_test control_allocator_test.cpp)
+target_link_libraries(control_allocator_test bicopter_physics flight_core)
+
+add_test(NAME control_allocator_test COMMAND control_allocator_test)

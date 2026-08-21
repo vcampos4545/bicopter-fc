@@ -7,7 +7,7 @@ flight-control code as the real vehicle.
 This is real embedded flight software (ESP-IDF + FreeRTOS, native C/C++ peripheral APIs — not
 Arduino), structured to stay readable for an engineer learning embedded flight software.
 
-**Status:** Milestone 11 (attitude controller) is complete. `firmware/` is a real ESP-IDF
+**Status:** Milestone 12 (control allocation) is complete. `firmware/` is a real ESP-IDF
 v5.5.5 project targeting `esp32`; boot is verified in QEMU (see
 [docs/firmware.md](docs/firmware.md)), `firmware/components/sensors/` has real MPU6050 IMU and
 BMP581 barometer I2C drivers, `firmware/components/actuators/` has real ESC/servo PWM output
@@ -36,11 +36,20 @@ desired/current attitude quaternion pair into a desired body rate via quaternion
 vector part, a double-cover shortest-path fix, and an always-on per-axis rate-limit clamp),
 feeding `RateController`'s `desired_radps` input unchanged and completing the cascaded
 attitude-loop-then-rate-loop architecture on paper — see [docs/control.md](docs/control.md) for
-the full derivation. Nothing in `firmware/`/`simulator/` calls into `flight_core/estimation/` or
-`flight_core/control/` yet — wiring the estimator into `EstimatorTask` is a noted follow-up (see
-docs/estimation.md) — and control-allocation code remains unimplemented (Milestone 12). No real
-hardware was available to verify actual I2C/PWM transactions or real-hardware task timing — see
-[TODO.md](TODO.md) for the full roadmap and what's implemented so far.
+the full derivation. As of Milestone 12, `flight_core/control/` also holds `ControlAllocator` —
+converting a desired total thrust and body torque (the direct output shape of Milestones 10-11)
+into motor1/2 throttle and motor1/2 tilt, Milestone 5's `MotorOutput`/`ServoOutput` normalized
+units. This is the mathematical inverse of Milestone 9's forward-dynamics model, derived
+term-by-term (a small-angle linearization around hover) from the exact same geometry, not an
+invented mixing matrix — see [docs/control_allocation.md](docs/control_allocation.md) for the
+full derivation, including this milestone's central finding that the vehicle's geometry as
+currently parameterized has no pitch-torque authority near hover unless
+`VehicleParams::center_of_mass_offset_m` has a nonzero vertical component. Nothing in
+`firmware/`/`simulator/` calls into `flight_core/estimation/` or `flight_core/control/` yet —
+wiring the estimator into `EstimatorTask` is a noted follow-up (see docs/estimation.md), and
+wiring the full estimator + attitude/rate/allocation stack into a closed loop is Milestone 13's
+job. No real hardware was available to verify actual I2C/PWM transactions or real-hardware task
+timing — see [TODO.md](TODO.md) for the full roadmap and what's implemented so far.
 
 ## Target vehicle
 
@@ -146,11 +155,12 @@ A standalone static library, plain CMake project (no ESP-IDF dependency), consum
 `firmware/` (via ESP-IDF's CMake component system, once a milestone wires that in) and by
 `simulator/` (via a normal desktop CMake build, real as of Milestone 9). `math/` (vectors,
 quaternions, small matrices — see [docs/math.md](docs/math.md)), `estimation/` (the attitude
-estimator — see [docs/estimation.md](docs/estimation.md)), `vehicle/` (`VehicleParams`, the
-shared vehicle-constants config — see [docs/dynamics.md](docs/dynamics.md)), and `control/` (the
-`Pid` building block, `RateController`, and `AttitudeController` — see
-[docs/control.md](docs/control.md)) are real as of Milestones 7-11; `dynamics/safety/` remain
-unimplemented.
+estimator — see [docs/estimation.md](docs/estimation.md)), `vehicle/` (`VehicleParams` and the
+shared `motorThrustDirectionBody()` geometry helper — see [docs/dynamics.md](docs/dynamics.md)),
+and `control/` (the `Pid` building block, `RateController`, `AttitudeController`, and — as of
+Milestone 12 — `ControlAllocator` — see [docs/control.md](docs/control.md) and
+[docs/control_allocation.md](docs/control_allocation.md)) are real as of Milestones 7-12;
+`dynamics/safety/` remain unimplemented.
 
 ```sh
 cmake -S flight_core -B flight_core/build
@@ -179,11 +189,13 @@ ESC/servo), `firmware/main/`'s one piece of pure task logic (SensorTask's barome
 decimation check), `flight_core/math/`'s vector/matrix/quaternion library,
 `flight_core/estimation/`'s complementary-filter attitude estimator (Milestone 8),
 `simulator/physics/`'s rigid-body dynamics model (Milestone 9), and `flight_core/control/`'s
-`Pid` building block, `RateController` (Milestone 10), and `AttitudeController` (Milestone 11) —
-all built independently of ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics` tests link the real
-static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`); the firmware driver tests
-still compile ESP-IDF-free `.c` sources directly by relative path, per
-[AGENTS.md](AGENTS.md#driver-testing-convention).
+`Pid` building block, `RateController` (Milestone 10), `AttitudeController` (Milestone 11), and
+`ControlAllocator` (Milestone 12) — all built independently of ESP-IDF via plain CMake/CTest. The
+`flight_core` and `bicopter_physics` tests link the real static libraries (via `add_subdirectory`,
+see `tests/CMakeLists.txt`); `control_allocator_test` additionally links `bicopter_physics` (not
+just `flight_core`) so its round-trip checks can call Milestone 9's real forward-dynamics function
+directly; the firmware driver tests still compile ESP-IDF-free `.c` sources directly by relative
+path, per [AGENTS.md](AGENTS.md#driver-testing-convention).
 
 ```sh
 cmake -S tests -B tests/build
@@ -200,6 +212,8 @@ ctest --test-dir tests/build --output-on-failure
 - [docs/hardware.md](docs/hardware.md) — hardware assumptions and how they're made configurable
 - [docs/control.md](docs/control.md) — `Pid`, `RateController`, `AttitudeController` design and
   the quaternion attitude-error convention
+- [docs/control_allocation.md](docs/control_allocation.md) — `ControlAllocator` derivation from
+  Milestone 9's forward dynamics, controllability-near-hover findings, and saturation policy
 - [docs/estimation.md](docs/estimation.md) — attitude estimator algorithm and derivation
 - [docs/dynamics.md](docs/dynamics.md) — rigid-body dynamics model, vehicle-geometry assumptions,
   and integration scheme (`simulator/physics/`, `flight_core/vehicle/`)

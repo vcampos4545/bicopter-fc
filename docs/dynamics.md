@@ -11,7 +11,10 @@ Vehicle-specific physical constants (mass, inertia, geometry, coefficients) live
 `simulator/physics/` itself — see [hardware.md](hardware.md)'s "Open / TBD items" table and
 "Configuration philosophy" section, both written in Milestone 1: these constants are meant to be
 consumed by both this milestone's physics model and `flight_core/control/`'s allocation math
-(Milestone 12) from the same struct, so the two never drift apart.
+(Milestone 12) from the same struct, so the two never drift apart. Milestone 12 also moved
+`motorThrustDirectionBody()` itself down into `flight_core/vehicle/include/motor_geometry.h` for
+the same reason (this header still re-exposes it via `#include` for backward compatibility) — see
+[control_allocation.md](control_allocation.md).
 
 ## Scope: forward dynamics only
 
@@ -183,10 +186,22 @@ it's *why* the geometry above is shaped this way, and what the torque tests belo
 - **Roll** (about body X): differential thrust between the two Y-offset motors —
   `test_asymmetric_thrust_induces_roll_torque` below.
 - **Pitch** (about body Y): common-mode tilt of both motors (both thrust vectors gain the same
-  `-X`/`+X` component).
+  `-X`/`+X` component) — **but only if `VehicleParams::center_of_mass_offset_m` has a nonzero Z
+  component.** [control_allocation.md](control_allocation.md)'s Milestone 12 derivation shows this
+  precisely: with both motors positioned purely along body Y (this section's geometry) and the
+  default zero CoM offset, `r x F` and the reaction-torque term both have *exactly* zero
+  Y-component for any thrust/tilt command — common-mode tilt produces a net body-X force
+  (translation) but zero net pitching moment. Pitch-torque authority near hover is a real
+  capability of this topology, but only once the vehicle has a genuine vertical offset between the
+  motor-mounting plane and its true center of mass; see control_allocation.md for the full
+  derivation and why this is a hardware/geometry finding, not a control-allocation limitation.
 - **Yaw** (about body Z): differential tilt between the two motors, or (if configured) reaction
   torque — `test_tilt_induces_yaw_and_roll_torque` and `test_reaction_torque_yaw` below both
-  demonstrate a yaw-torque contribution, from two different physical mechanisms.
+  demonstrate a yaw-torque contribution, from two different physical mechanisms. Milestone 12's
+  allocator commits `thrust_1`/`thrust_2` to the roll/total-thrust solve first, so in practice its
+  controllable yaw lever is differential tilt; reaction torque shows up as a fixed bias it
+  corrects for rather than a separately-controllable input — see
+  [control_allocation.md](control_allocation.md).
 
 ## Integration scheme
 
