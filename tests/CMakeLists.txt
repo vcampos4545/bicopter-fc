@@ -258,3 +258,19 @@ target_compile_definitions(pwm_esc_bench_test_gate_disabled_test PRIVATE
 )
 
 add_test(NAME pwm_esc_bench_test_gate_disabled_test COMMAND pwm_esc_bench_test_gate_disabled_test)
+
+# Follow-up task (not one of the 18 numbered milestones -- see AGENTS.md/docs/visualization.md):
+# simulator/visualization/'s coordinate_convert.cpp (NED <-> VGL render-space conversion) is
+# glm/VGL-free by design, so it compiles directly here the same way mpu6050_convert.c does -- this
+# keeps VGL scoped entirely to simulator/visualization/'s own CMakeLists.txt (FetchContent), never
+# leaking into this tests/ build.
+set(VISUALIZATION_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../simulator/visualization)
+
+add_executable(coordinate_convert_test
+    coordinate_convert_test.cpp
+    ${VISUALIZATION_DIR}/src/coordinate_convert.cpp
+)
+target_include_directories(coordinate_convert_test PRIVATE ${VISUALIZATION_DIR}/include)
+target_link_libraries(coordinate_convert_test flight_core)
+
+add_test(NAME coordinate_convert_test COMMAND coordinate_convert_test)

@@ -1,10 +1,12 @@
 // bicopter_sim: a minimal text-based demonstration of Milestone 13's closed loop -- a combined
 // roll+yaw disturbance recovering to level under the default (zero center-of-mass-offset)
 // vehicle configuration, tracing attitude error to stdout every few control cycles so convergence
-// is directly observable, not just asserted in a test. A full graphical visualization is out of
-// scope for this milestone (not one of the 18 numbered items) -- see docs/simulation.md, which
-// this demo's configuration matches (same vehicle fixture, same estimator/noise configuration,
-// same reasoning for both) so results here and in tests/sim_loop_test.cpp agree.
+// is directly observable, not just asserted in a test. See docs/simulation.md, which this demo's
+// configuration matches (same vehicle fixture, same estimator/noise configuration, same reasoning
+// for both) so results here and in tests/sim_loop_test.cpp agree. A real graphical visualization
+// of this same scenario, built on VGL, lives alongside this one as `bicopter_sim_viz` -- see
+// visualization/ and docs/visualization.md; this text-trace demo stays as the lightweight/
+// no-GUI-dependency build path.
 //
 // This is a smoke-test/demo entry point, not itself part of the automated test suite --
 // tests/sim_loop_test.cpp is what asserts convergence. Run with `./bicopter_sim` after building
