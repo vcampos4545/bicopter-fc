@@ -481,3 +481,31 @@ appear (e.g. the estimator milestone may add fields to the `Imu` interface).
   failsafe behavior; restrained/tethered first powered test) that Milestone 17 is meant to actually
   run against. No physical hardware was available in this environment — see docs/bench_test.md's
   verified-vs-deferred section.
+
+## Follow-up tasks (beyond the 18 milestones)
+
+- [x] **Simulator graphical visualization**
+  Deliverable: a real graphical renderer of the closed-loop simulator (`simulator/sim_loop/`'s
+  `SimLoop`), on top of the captain's [VGL](https://github.com/vcampos4545/VGL) rendering library
+  — the directory `simulator/visualization/` had been reserved for since Milestone 13, previously
+  unimplemented.
+  Done when: a new executable renders the vehicle body, both motor positions, live per-motor
+  thrust vectors, and the target attitude, all driven by a real running `SimLoop` (not a
+  scripted/fake animation), additively alongside the existing text-trace `bicopter_sim` demo.
+  Done via: VGL pulled in via CMake `FetchContent`, scoped entirely to
+  `simulator/visualization/CMakeLists.txt` (gated behind the `BICOPTER_SIM_BUILD_VISUALIZATION`
+  option in `simulator/CMakeLists.txt`, default ON) — `flight_core/`, `firmware/`, and `tests/`
+  never depend on VGL. The new `bicopter_sim_viz` executable runs the same 15°roll+20°yaw
+  disturbance-converges scenario `simulator/main.cpp`'s `bicopter_sim` already demonstrates, at a
+  fixed-timestep physics rate independent of render rate. The NED<->VGL-render-space coordinate
+  conversion (`simulator/visualization/include/coordinate_convert.h`) is glm/VGL-free by design,
+  following this project's driver-testing convention (AGENTS.md), so it's automated-tested
+  (`tests/coordinate_convert_test.cpp`, 13 checks) without `tests/` ever linking VGL. `idf.py
+  build` and all pre-existing `tests/`/`bicopter_sim` targets were confirmed unaffected. Running
+  `bicopter_sim_viz` in this environment produced a real, converging closed-loop trace (24.95° ->
+  a stable ~4.64° residual within ~1.4s, matching `tests/sim_loop_test.cpp`'s tolerance for the
+  same scenario) over a 30+ second real-time run with no crash — strong evidence the real stack is
+  driving every draw call — but a screenshot of the rendered window itself could not be captured
+  in this automated environment (no interactive WindowServer-visible session); see
+  [docs/visualization.md](docs/visualization.md)'s "Verification" section for the full honest
+  breakdown of what's automated-tested vs. build-confirmed vs. eyeball-only.

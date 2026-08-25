@@ -269,6 +269,20 @@ task that reads it starts, and never reassigned after — unlike `safety_state.h
 which are both written every cycle). See [docs/bench_test.md](docs/bench_test.md) for the full
 writeup, including the recommended real-hardware bring-up sequence Milestone 17 is meant to run
 against.
+A later follow-up task (not one of the 18 numbered milestones — see TODO.md's "Follow-up tasks"
+section) filled in `simulator/visualization/`: a real graphical renderer of `SimLoop`'s closed
+loop, on top of the captain's [VGL](https://github.com/vcampos4545/VGL) rendering library, pulled
+in via CMake `FetchContent` scoped entirely to `simulator/visualization/CMakeLists.txt` (gated
+behind a `BICOPTER_SIM_BUILD_VISUALIZATION` option in `simulator/CMakeLists.txt`, default ON) —
+`flight_core/`, `firmware/`, and `tests/` never depend on VGL; any later work adding another
+optional desktop-only dependency should follow the same pattern (FetchContent/dependency scoped to
+the one leaf CMakeLists.txt that needs it, gated behind an option so the rest of the tree still
+configures without it). This task also established the NED<->VGL-render-space coordinate
+convention (a fixed `(x, y, z) -> (x, -z, y)` change of basis, since VGL is Y-up/right-handed while
+this project's world frame is NED) in `simulator/visualization/include/coordinate_convert.h` — kept
+glm/VGL-free so it stays automated-tested per this file's driver-testing convention below — and the
+new `bicopter_sim_viz` executable, additive alongside `bicopter_sim`. See
+[docs/visualization.md](docs/visualization.md) for the full writeup.
 See [TODO.md](TODO.md) for the full milestone sequence and current status.
 
 ## CMake: guard a shared subdirectory before add_subdirectory-ing it

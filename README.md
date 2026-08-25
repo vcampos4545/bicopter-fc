@@ -264,13 +264,17 @@ cmake --build flight_core/build
 and `simulator/sim_loop/` (`SimLoop`, the estimator -> attitude/rate control -> allocation ->
 dynamics closed loop) are real too, and `simulator/main.cpp` builds as the interactive
 `bicopter_sim` executable — a minimal text-trace demo of closed-loop stabilization; see
-[docs/simulation.md](docs/simulation.md). `simulator/visualization/` remains unimplemented — a
-full graphical visualization is out of scope for Milestone 13 (not one of the 18 numbered items).
+[docs/simulation.md](docs/simulation.md). A later follow-up task (not one of the 18 numbered
+milestones) added `simulator/visualization/`: a real graphical renderer of the same closed loop,
+built on the captain's [VGL](https://github.com/vcampos4545/VGL) library and pulled in via CMake
+`FetchContent`, additive alongside (not replacing) the text-trace demo — see
+[docs/visualization.md](docs/visualization.md).
 
 ```sh
 cmake -S simulator -B simulator/build
 cmake --build simulator/build
-./simulator/build/bicopter_sim   # text-trace demo of closed-loop stabilization
+./simulator/build/bicopter_sim                      # text-trace demo of closed-loop stabilization
+./simulator/build/visualization/bicopter_sim_viz     # graphical demo (requires: brew install glfw glew glm)
 ```
 
 ### tests/
@@ -295,8 +299,10 @@ validation logic (`flight_mode_test`, `arming_test`, `failsafe_test`,
 bench_test component's pure UART command-line-parsing logic (`bench_test_command_test`) and the
 BENCH_TEST motor-disable gate's compile-time macro translation, built twice under both
 configurations (`pwm_esc_bench_test_gate_test`, `pwm_esc_bench_test_gate_disabled_test`) — see
-[docs/bench_test.md](docs/bench_test.md) — all built independently of
-ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
+[docs/bench_test.md](docs/bench_test.md) — and, from the visualization follow-up task, the
+`simulator/visualization/` NED<->render-space coordinate conversion (`coordinate_convert_test`,
+glm/VGL-free by design — see [docs/visualization.md](docs/visualization.md)) — all built
+independently of ESP-IDF via plain CMake/CTest. The `flight_core` and `bicopter_physics`
 tests link the real static libraries (via `add_subdirectory`, see `tests/CMakeLists.txt`);
 `control_allocator_test` additionally links `bicopter_physics` (not just `flight_core`) so its
 round-trip checks can call Milestone 9's real forward-dynamics function directly; `sim_loop_test`
@@ -327,6 +333,9 @@ ctest --test-dir tests/build --output-on-failure
 - [docs/simulation.md](docs/simulation.md) — closed-loop wiring (`simulator/sim_loop/`), the
   simulated IMU (`simulator/sensors/`), convergence criteria, and this milestone's findings on
   accelerometer observability during hover and gyroscopic pitch coupling
+- [docs/visualization.md](docs/visualization.md) — the VGL-based graphical visualizer
+  (`simulator/visualization/`, `bicopter_sim_viz`), what it renders, the NED<->render-space
+  coordinate conversion, and its build/verification story
 - [docs/radio.md](docs/radio.md) — `Radio` HAL interface, ESP-NOW packet format and pairing
   procedure, CRSF frame format/protocol-choice rationale/channel-mapping and calibration
   procedure, both backends' callback-or-driver/task-context splits, and packet-loss/staleness
